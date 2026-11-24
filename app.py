@@ -19,9 +19,45 @@ API_KEY = os.environ.get("FILAMENTPROFILES_API_KEY", "").strip()
 DATA_DIR = Path(os.environ.get("NB_DATA_DIR", "/data"))
 STATIC_DIR = Path(__file__).parent / "static"
 
-# Classic 40x30 mm layout, as SVG so the browser can rasterise it at printer resolution.
-LABEL_PARAMS = {"format": "svg", "size": "1"}
-LABEL_PARAMS_TAG = hashlib.sha1(json.dumps(LABEL_PARAMS, sort_keys=True).encode()).hexdigest()[:8]
+# Slot values the label API accepts, with the names it prints (from the API docs).
+SLOT_OPTIONS = {
+    "nozzleTemp": "Nozzle Temp",
+    "bedTemp": "Bed Temp",
+    "chamber_temp": "Chamber Temp",
+    "flowRatio": "Flow Ratio",
+    "flowInfo": "Flow Info (Max Vol Spd & Flow Ratio)",
+    "max_volumetric_speed": "Max Volumetric Speed",
+    "kValue": "Pressure Advance/K Value",
+    "tdValue": "Transmission Distance (TD)",
+    "dryingInfo": "Drying Info (Time & Temp)",
+    "dryingTemp": "Drying Temp",
+    "dryingTime": "Drying Time",
+    "last_dried": "Last Dried Date",
+    "spoolWeight": "Empty Spool Weight",
+    "shrinkage": "Shrinkage",
+    "ironing_info": "Ironing Info (Speed & Flow)",
+    "ironing_flow": "Ironing Flow",
+    "ironing_speed": "Ironing Speed",
+    "ams": "AMS Compatible",
+    "amsModels": "AMS Models",
+    "filamentId": "Filament ID",
+    "sku": "SKU",
+    "shortCode": "Spool ID",
+    "location": "Location",
+    "rfidTag": "RFID Tag",
+    "purchaseDate": "Purchase Date",
+    "purchasePrice": "Purchase Price",
+    "purchaseNotes": "Purchase Notes",
+    "none": "(empty)",
+}
+QR_OPTIONS = {"detail": "Spool page", "edit": "Spool edit form"}
+DEFAULT_LABEL_SETTINGS = {
+    "slots": ["nozzleTemp", "bedTemp", "flowRatio", "tdValue"],
+    "show_rgb": True,
+    "rgb_swatch": False,
+    "rgb_field": "",  # "" keeps the colour code; otherwise a slot value printed in the colour area
+    "qr": "detail",
+}
 SHORT_CODE_RE = re.compile(r"[A-Za-z0-9]{1,32}")
 SPOOL_FIELDS = ("short_code", "location", "remaining_grams", "notes", "td_value", "updated_at", "spool_url")
 FILAMENT_FIELDS = ("brand", "material", "material_type", "color", "rgb")
@@ -51,6 +87,9 @@ async def lifespan(app: FastAPI):
     # Be gentle with the API, and never fetch the same label twice at once.
     app.state.upstream_slots = asyncio.Semaphore(4)
     app.state.label_locks = {}
+    # Labels used to be cached flat in labels/; they now live in one folder per settings.
+    for legacy in (DATA_DIR / "labels").glob("*.svg"):
+        legacy.unlink(missing_ok=True)
     yield
 
 
@@ -157,6 +196,73 @@ async def get_spools(refresh: bool = False):
     }
 
 
+# ── label settings ────────────────────────────────────────────────────────────
+
+def validate_label_settings(s: object) -> dict:
+    """Return clean settings, or raise ApiError(400) naming the bad field."""
+    def bad(message: str):
+        raise ApiError(400, "invalid_settings", message)
+
+    if not isinstance(s, dict):
+        bad("Settings must be a JSON object.")
+    slots = s.get("slots")
+    if not isinstance(slots, list) or len(slots) != 4 or not all(v in SLOT_OPTIONS for v in slots):
+        bad("slots must be a list of four slot values.")
+    for key in ("show_rgb", "rgb_swatch"):
+        if not isinstance(s.get(key), bool):
+            bad(f"{key} must be true or false.")
+    rgb_field = s.get("rgb_field")
+    if rgb_field != "" and (rgb_field not in SLOT_OPTIONS or rgb_field == "none"):
+        bad("rgb_field must be empty or a slot value.")
+    if s.get("qr") not in QR_OPTIONS:
+        bad("qr must be detail or edit.")
+    return {k: s[k] for k in DEFAULT_LABEL_SETTINGS}
+
+
+def load_label_settings() -> dict:
+    stored = read_json(DATA_DIR / "settings.json") or {}
+    merged = {**DEFAULT_LABEL_SETTINGS, **stored.get("label", {})}
+    try:
+        return validate_label_settings(merged)
+    except ApiError:
+        return dict(DEFAULT_LABEL_SETTINGS)
+
+
+def label_params(settings: dict) -> dict:
+    """Query parameters for the label API: the classic 40x30 mm layout as SVG."""
+    params = {
+        "format": "svg",
+        "size": "1",
+        "slots": ",".join(settings["slots"]),
+        "show_rgb": str(settings["show_rgb"]).lower(),
+        "rgb_swatch": str(settings["rgb_swatch"]).lower(),
+        "qr": settings["qr"],
+    }
+    if settings["rgb_field"]:
+        params["rgb_field"] = settings["rgb_field"]
+    return params
+
+
+@app.get("/api/settings")
+def get_settings():
+    return {
+        "label": load_label_settings(),
+        "defaults": DEFAULT_LABEL_SETTINGS,
+        "options": {"slots": SLOT_OPTIONS, "qr": QR_OPTIONS},
+    }
+
+
+@app.put("/api/settings")
+async def put_settings(request: Request):
+    try:
+        body = await request.json()
+    except ValueError:
+        raise ApiError(400, "invalid_settings", "Settings must be JSON.")
+    label = validate_label_settings(body.get("label") if isinstance(body, dict) else None)
+    write_json(DATA_DIR / "settings.json", {"label": label})
+    return get_settings()
+
+
 # ── labels ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/label/{short_code}")
@@ -168,15 +274,18 @@ async def get_label(short_code: str, refresh: bool = False):
     if spool is None:
         raise ApiError(404, "unknown_spool", f"Spool {short_code} is not in the spool list. Try Refresh.")
 
-    # The file name changes whenever the spool or the label options change, so the
-    # cache never serves a stale label, and costs one request per label otherwise.
-    version = hashlib.sha1(f"{spool.get('updated_at')}|{LABEL_PARAMS_TAG}".encode()).hexdigest()[:12]
-    labels_dir = DATA_DIR / "labels"
+    # One cache folder per combination of label settings, so switching back to
+    # settings used before costs nothing. Within it, the file name changes when
+    # the spool does, so a stale label is never served.
+    params = label_params(load_label_settings())
+    params_tag = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:10]
+    version = hashlib.sha1(str(spool.get("updated_at")).encode()).hexdigest()[:12]
+    labels_dir = DATA_DIR / "labels" / params_tag
     path = labels_dir / f"{short_code}-{version}.svg"
 
     async with app.state.label_locks.setdefault(short_code, asyncio.Lock()):
         if refresh or not path.exists():
-            r = await upstream_get(f"/my/spools/{short_code}/label", LABEL_PARAMS)
+            r = await upstream_get(f"/my/spools/{short_code}/label", params)
             write_atomic(path, r.content)
             for old in labels_dir.glob(f"{short_code}-*.svg"):
                 if old != path:

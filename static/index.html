@@ -41,6 +41,48 @@
   .meta.low { color: var(--warn); }
   .meta.bad { color: var(--bad); }
 
+  .printer {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface); font-size: .9rem;
+  }
+  .printer .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .printer.connected .dot { background: var(--ok); }
+  .printer.busy .dot { background: var(--warn); }
+  #btStatus { margin-right: auto; }
+  #btStatus small { color: var(--muted); }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+
+  dialog#settings {
+    width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
+  }
+  dialog#settings::backdrop { background: rgba(0, 0, 0, .35); }
+  .settings-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--line);
+  }
+  .settings-head h2 { font-size: 1.1rem; margin: 0; }
+  dialog section { padding: 12px 16px 16px; border-bottom: 1px solid var(--line); }
+  dialog section:last-child { border-bottom: 0; }
+  dialog h3 { font-size: 1rem; margin: 0 0 4px; }
+  dialog h3 small { color: var(--muted); font-weight: normal; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 4px 0 10px; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; }
+  .fields label { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
+  .fields label.check { flex-direction: row; align-items: center; gap: 8px; align-self: end; padding-bottom: 6px; }
+  .fields select, .fields input[type=number] {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 100%;
+  }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .row .hint { margin: 0; }
+  .calib { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; margin-top: 4px; }
+  .calib > div { flex: 1 1 220px; }
+  .calib .hint { margin-top: 8px; }
+  #calCanvas {
+    width: 320px; max-width: 100%; height: auto; image-rendering: pixelated;
+    border: 1px dashed var(--line); background: #fff;
+  }
+
   .banner {
     margin: 12px 16px 0; padding: 8px 12px; border-radius: 6px;
     background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad);
@@ -100,6 +142,12 @@
   .label-box.error { color: var(--bad); padding: 12px; text-align: center; }
   .preview-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
   .preview-actions a { color: var(--accent); margin-right: auto; }
+  .raster-title { color: var(--muted); font-size: .8rem; margin: 12px 0 4px; }
+  #pvRaster {
+    display: block; width: 320px; max-width: 100%; height: auto; image-rendering: pixelated;
+    border: 1px dashed var(--line); background: #fff;
+  }
+  #pvProgress { color: var(--muted); font-size: .85rem; margin-top: 6px; min-height: 1.2em; }
 
   @media (max-width: 900px) {
     #preview {
@@ -121,6 +169,66 @@
   <span class="meta" id="fetched"></span>
   <button id="refresh" title="Fetch the spool list again (1 API request)">Refresh list</button>
 </header>
+
+<div class="printer" id="printerBar">
+  <span class="dot"></span>
+  <span id="btStatus">Printer not connected</span>
+  <button id="openSettings">Settings</button>
+  <button id="connect" class="primary">Connect printer</button>
+</div>
+
+<dialog id="settings" aria-labelledby="settingsTitle">
+  <div class="settings-head">
+    <h2 id="settingsTitle">Settings</h2>
+    <button id="closeSettings">Close</button>
+  </div>
+
+  <section>
+    <h3>Label content</h3>
+    <p class="hint">Shared by every device. After a change, each label is downloaded again the first time
+      it's used (1 API request per label). Settings you've used before are still cached.</p>
+    <div class="fields">
+      <label>Property 1 <select id="slot0"></select></label>
+      <label>Property 2 <select id="slot1"></select></label>
+      <label>Property 3 <select id="slot2"></select></label>
+      <label>Property 4 <select id="slot3"></select></label>
+      <label>Colour area <select id="colorArea"></select></label>
+      <label>QR code opens <select id="qr"></select></label>
+    </div>
+    <div class="row">
+      <button id="saveLabel" class="primary">Save label settings</button>
+      <button id="resetLabel">Reset to defaults</button>
+      <span id="labelStatus" class="hint"></span>
+    </div>
+  </section>
+
+  <section>
+    <h3>Printer <small>(saved in this browser)</small></h3>
+    <div class="fields">
+      <label>Density
+        <select id="optDensity"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+      </label>
+      <label>Direction
+        <select id="optDirection"><option value="top">Top (as drawn)</option><option value="left">Left (rotated 90°)</option></select>
+      </label>
+      <label>Horizontal offset, mm <input type="number" id="optOffsetX" step="0.125" min="-5" max="5"></label>
+      <label>Vertical offset, mm <input type="number" id="optOffsetY" step="0.125" min="-5" max="5"></label>
+      <label class="check"><input type="checkbox" id="optFlip"> Rotate 180°</label>
+    </div>
+    <p class="hint">Offsets move the print as you read the label: positive is right or down, negative is left
+      or up. One printer dot is 0.125 mm.</p>
+    <div class="calib">
+      <canvas id="calCanvas" width="320" height="240"></canvas>
+      <div>
+        <button id="printCal">Print calibration label</button>
+        <p class="hint">The outer border is the label's edge and the inner one is 1 mm in, with ticks every
+          1 mm. If the print sits to the right, use a negative horizontal offset, and so on, until the
+          border is even. This uses no API requests.</p>
+        <div id="calStatus" class="hint"></div>
+      </div>
+    </div>
+  </section>
+</dialog>
 
 <div id="error" class="banner" role="alert" hidden></div>
 
@@ -145,10 +253,14 @@
     <h2 id="pvCode"></h2>
     <div class="sub" id="pvSub"></div>
     <div class="label-box" id="pvBox"></div>
+    <div class="raster-title">As sent to the printer (320 × 240 dots, black and white)</div>
+    <canvas id="pvRaster" width="320" height="240"></canvas>
     <div class="preview-actions">
       <a id="pvLink" target="_blank" rel="noopener">Open spool page</a>
+      <button id="pvPrint" class="primary" disabled>Print this label</button>
       <button id="pvClose">Close</button>
     </div>
+    <div id="pvProgress"></div>
   </aside>
 </main>
 
@@ -378,6 +490,343 @@ function updateChecks() {
   $("clearSel").disabled = n === 0;
 }
 
+// ── label rasterising ────────────────────────────────────────────────────────
+
+// Classic label is 40 x 30 mm; the B1 prints 203 dpi, i.e. 8 dots per mm.
+const LABEL_W = 320, LABEL_H = 240;
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("The label image could not be drawn."));
+    img.src = url;
+  });
+}
+
+const DOTS_PER_MM = 8;
+
+/**
+ * Paint a label onto `canvas` at printer resolution, as pure black and white.
+ * Rotation and the offset nudge are applied here, so the preview shows exactly
+ * what the printer gets. The offset is in reading direction: +x right, +y down.
+ */
+function drawLabel(canvas, paint) {
+  canvas.width = LABEL_W;
+  canvas.height = LABEL_H;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, LABEL_W, LABEL_H);
+  ctx.save();
+  if (settings.flip) {
+    ctx.translate(LABEL_W, LABEL_H);
+    ctx.rotate(Math.PI);
+  }
+  ctx.translate(Math.round(settings.offsetX * DOTS_PER_MM), Math.round(settings.offsetY * DOTS_PER_MM));
+  paint(ctx);
+  ctx.restore();
+
+  const data = ctx.getImageData(0, 0, LABEL_W, LABEL_H);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    const v = lum < 128 ? 0 : 255;
+    px[i] = px[i + 1] = px[i + 2] = v;
+    px[i + 3] = 255;
+  }
+  ctx.putImageData(data, 0, 0);
+}
+
+/** Draw a label SVG onto `canvas`, ready to print. */
+async function rasterise(svgBlob, canvas) {
+  const url = URL.createObjectURL(svgBlob);
+  try {
+    const img = await loadImage(url);
+    drawLabel(canvas, (ctx) => ctx.drawImage(img, 0, 0, LABEL_W, LABEL_H));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function formatMm(v) {
+  return (v > 0 ? "+" : "") + v.toFixed(3).replace(/\.?0+$/, "");
+}
+
+/** Test pattern: border on the label edge, border 1 mm in, 1 mm ticks, centre cross. */
+function paintCalibration(ctx) {
+  const W = LABEL_W, H = LABEL_H, mm = DOTS_PER_MM;
+  ctx.strokeStyle = "#000";
+  ctx.fillStyle = "#000";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+  ctx.strokeRect(mm + 0.5, mm + 0.5, W - 2 * mm - 1, H - 2 * mm - 1);
+
+  ctx.beginPath();
+  for (let x = mm; x < W; x += mm) {
+    const len = (x / mm) % 5 === 0 ? 6 : 3;
+    ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, len);
+    ctx.moveTo(x + 0.5, H); ctx.lineTo(x + 0.5, H - len);
+  }
+  for (let y = mm; y < H; y += mm) {
+    const len = (y / mm) % 5 === 0 ? 6 : 3;
+    ctx.moveTo(0, y + 0.5); ctx.lineTo(len, y + 0.5);
+    ctx.moveTo(W, y + 0.5); ctx.lineTo(W - len, y + 0.5);
+  }
+  ctx.moveTo(W / 2 + 0.5, H / 2 - 28); ctx.lineTo(W / 2 + 0.5, H / 2 + 28);
+  ctx.moveTo(W / 2 - 28, H / 2 + 0.5); ctx.lineTo(W / 2 + 28, H / 2 + 0.5);
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.font = "bold 18px sans-serif";
+  ctx.fillText("NiimBatch calibration", W / 2, 52);
+  ctx.font = "bold 15px sans-serif";
+  ctx.fillText(`Offset X ${formatMm(settings.offsetX)} mm   Y ${formatMm(settings.offsetY)} mm`, W / 2, 182);
+  ctx.fillText(`Density ${settings.density}${settings.flip ? " · rotated 180°" : ""}`, W / 2, 202);
+  // An arrow showing which way is "up" when reading, to tell rotation apart.
+  ctx.beginPath();
+  ctx.moveTo(40, 100); ctx.lineTo(32, 112); ctx.lineTo(48, 112); ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(38, 112, 4, 24);
+}
+
+function renderCalibration() {
+  drawLabel($("calCanvas"), paintCalibration);
+}
+
+// ── printer ──────────────────────────────────────────────────────────────────
+
+const SETTINGS_KEY = "niimbatch.print";
+const DEFAULT_SETTINGS = { density: "3", direction: "top", flip: false, offsetX: 0, offsetY: 0 };
+const settings = loadSettings();
+
+function loadSettings() {
+  try {
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private window */ }
+}
+
+const printer = { client: null, deviceName: "", model: "", task: "B1", battery: null, busy: false, connecting: false };
+const bluetoothUsable = "bluetooth" in navigator && window.isSecureContext && typeof niimbluelib !== "undefined";
+
+function updatePrinterUi() {
+  const bar = $("printerBar");
+  const connected = !!printer.client;
+  bar.classList.toggle("connected", connected && !printer.busy);
+  bar.classList.toggle("busy", printer.busy || printer.connecting);
+
+  const status = $("btStatus");
+  if (!bluetoothUsable) {
+    status.textContent = "Bluetooth needs Chrome or Edge, opened via http://localhost or HTTPS";
+  } else if (printer.connecting) {
+    status.textContent = "Connecting…";
+  } else if (connected) {
+    const parts = [printer.deviceName || "printer", printer.model || "unknown model"];
+    if (printer.battery != null) parts.push(`battery ${printer.battery}%`);
+    status.replaceChildren(`Connected: ${parts.join(" · ")}`);
+    if (printer.model !== "B1") status.append(" ", el("small", {}, `(using the ${printer.task} print task)`));
+  } else {
+    status.textContent = "Printer not connected";
+  }
+
+  $("connect").textContent = connected ? "Disconnect" : "Connect printer";
+  $("connect").classList.toggle("primary", !connected);
+  $("connect").disabled = !bluetoothUsable || printer.connecting || printer.busy;
+  $("pvPrint").disabled = !connected || printer.busy || !state.rasterReady;
+  $("printCal").disabled = !connected || printer.busy;
+  $("printCal").title = connected ? "" : "Connect the printer first";
+}
+
+async function toggleConnection() {
+  if (printer.client) {
+    await printer.client.disconnect().catch(() => {});
+    return; // the "disconnect" event resets the state
+  }
+  const client = new niimbluelib.NiimbotBluetoothClient();
+  client.on("disconnect", () => {
+    printer.client = null;
+    printer.battery = null;
+    printer.busy = false;
+    updatePrinterUi();
+  });
+  client.on("heartbeat", (e) => {
+    if (e.data.batteryPercents != null && e.data.batteryPercents !== printer.battery) {
+      printer.battery = e.data.batteryPercents;
+      updatePrinterUi();
+    }
+  });
+  client.on("printprogress", (e) => {
+    if (printer.statusEl) {
+      printer.statusEl.textContent = `Printing label ${e.page} of ${e.pagesTotal}… ${e.pagePrintProgress}%`;
+    }
+  });
+
+  printer.connecting = true;
+  updatePrinterUi();
+  try {
+    const info = await client.connect();
+    printer.client = client;
+    printer.deviceName = info.deviceName || "";
+    printer.model = client.getModelMetadata()?.model || "";
+    printer.task = client.getPrintTaskType() || "B1";
+    showError("");
+  } catch (e) {
+    // Closing the browser's device picker is not an error worth shouting about.
+    if (!/cancel/i.test(e?.message || "")) showError(`Could not connect to the printer: ${e?.message || e}`);
+  } finally {
+    printer.connecting = false;
+    updatePrinterUi();
+  }
+}
+
+/** Print each canvas as one label, in a single print job, reporting progress in statusEl. */
+async function printCanvases(canvases, statusEl) {
+  printer.statusEl = statusEl;
+  const { ImageEncoder, PageColorType, LabelType } = niimbluelib;
+  const task = printer.client.protocol.newPrintTask(printer.task, {
+    totalPages: canvases.length,
+    density: Number(settings.density),
+    labelType: LabelType.WithGaps,
+    pageColor: PageColorType.SingleColor,
+    statusPollIntervalMs: 100,
+    statusTimeoutMs: 8000,
+  });
+  printer.busy = true;
+  updatePrinterUi();
+  try {
+    await task.printInit();
+    for (const canvas of canvases) {
+      const encoded = ImageEncoder.encodeCanvas(canvas, PageColorType.SingleColor, settings.direction);
+      await task.printPage(encoded, 1);
+      await task.waitForPageFinished();
+    }
+    await task.waitForFinished();
+  } finally {
+    await task.printEnd().catch(() => {});
+    printer.busy = false;
+    updatePrinterUi();
+  }
+}
+
+async function printPreviewed() {
+  // Print from a copy, so opening another preview mid-print can't change it.
+  const copy = el("canvas", { width: LABEL_W, height: LABEL_H });
+  copy.getContext("2d").drawImage($("pvRaster"), 0, 0);
+  const code = state.previewCode;
+  const status = $("pvProgress");
+  status.textContent = "Starting print…";
+  try {
+    await printCanvases([copy], status);
+    status.textContent = `Printed ${code}.`;
+  } catch (e) {
+    status.textContent = `Print failed: ${e?.message || e}`;
+  }
+}
+
+async function printCalibration() {
+  const canvas = el("canvas");
+  drawLabel(canvas, paintCalibration);
+  const status = $("calStatus");
+  status.textContent = "Starting print…";
+  try {
+    await printCanvases([canvas], status);
+    status.textContent = "Calibration label printed.";
+  } catch (e) {
+    status.textContent = `Print failed: ${e?.message || e}`;
+  }
+}
+
+// ── settings ─────────────────────────────────────────────────────────────────
+
+let labelDefaults = null;
+
+async function apiSend(method, path, body) {
+  const r = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(data?.error?.message || `Server returned HTTP ${r.status}.`);
+  return data;
+}
+
+/** The colour area is one dropdown in the UI but three API parameters. */
+function colorAreaValue(l) {
+  if (!l.show_rgb) return "hidden";
+  if (l.rgb_field) return `field:${l.rgb_field}`;
+  return l.rgb_swatch ? "swatch" : "code";
+}
+
+function readLabelForm() {
+  const area = $("colorArea").value;
+  return {
+    slots: [0, 1, 2, 3].map((i) => $(`slot${i}`).value),
+    show_rgb: area !== "hidden",
+    rgb_swatch: area === "swatch",
+    rgb_field: area.startsWith("field:") ? area.slice(6) : "",
+    qr: $("qr").value,
+  };
+}
+
+function fillLabelForm(l) {
+  l.slots.forEach((v, i) => { $(`slot${i}`).value = v; });
+  $("colorArea").value = colorAreaValue(l);
+  $("qr").value = l.qr;
+}
+
+async function loadLabelSettings() {
+  try {
+    const s = await apiJson("/api/settings");
+    labelDefaults = s.defaults;
+    const slotEntries = Object.entries(s.options.slots);
+    for (let i = 0; i < 4; i++) {
+      $(`slot${i}`).replaceChildren(...slotEntries.map(([v, name]) => el("option", { value: v }, name)));
+    }
+    $("colorArea").replaceChildren(
+      el("option", { value: "code" }, "Colour code (hex)"),
+      el("option", { value: "swatch" }, "Colour swatch"),
+      el("option", { value: "hidden" }, "Hidden"),
+      ...slotEntries.filter(([v]) => v !== "none").map(([v, name]) => el("option", { value: `field:${v}` }, `Field: ${name}`)),
+    );
+    $("qr").replaceChildren(...Object.entries(s.options.qr).map(([v, name]) => el("option", { value: v }, name)));
+    fillLabelForm(s.label);
+  } catch (e) {
+    $("labelStatus").textContent = `Could not load label settings: ${e.message}`;
+  }
+}
+
+async function saveLabelSettings() {
+  const status = $("labelStatus");
+  $("saveLabel").disabled = true;
+  status.textContent = "Saving…";
+  try {
+    const s = await apiSend("PUT", "/api/settings", { label: readLabelForm() });
+    fillLabelForm(s.label);
+    status.textContent = "Saved.";
+    if (state.previewCode) showPreview(state.previewCode); // shows the label with the new content
+  } catch (e) {
+    status.textContent = `Not saved: ${e.message}`;
+  } finally {
+    $("saveLabel").disabled = false;
+  }
+}
+
+function readOffset(input) {
+  const v = Math.max(-5, Math.min(5, Number(input.value) || 0));
+  const snapped = Math.round(v * DOTS_PER_MM) / DOTS_PER_MM;
+  input.value = String(snapped);
+  return snapped;
+}
+
+/** Re-render everything drawn with the printer settings. */
+async function printSettingsChanged() {
+  saveSettings();
+  renderCalibration();
+  if (state.previewBlob && state.previewCode) await rasterise(state.previewBlob, $("pvRaster"));
+}
+
 // ── preview ──────────────────────────────────────────────────────────────────
 
 async function showPreview(code) {
@@ -395,6 +844,12 @@ async function showPreview(code) {
   const box = $("pvBox");
   box.className = "label-box";
   box.replaceChildren("Loading label…");
+  const raster = $("pvRaster");
+  raster.getContext("2d").clearRect(0, 0, raster.width, raster.height);
+  state.rasterReady = false;
+  state.previewBlob = null;
+  if (!printer.busy) $("pvProgress").textContent = "";
+  updatePrinterUi();
   $("preview").hidden = false;
 
   try {
@@ -408,6 +863,11 @@ async function showPreview(code) {
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = URL.createObjectURL(blob);
     box.replaceChildren(el("img", { src: state.previewUrl, alt: `Label for spool ${code}` }));
+    state.previewBlob = blob;
+    await rasterise(blob, raster);
+    if (state.previewCode !== code) return;
+    state.rasterReady = true;
+    updatePrinterUi();
   } catch (e) {
     if (state.previewCode !== code) return;
     box.className = "label-box error";
@@ -437,6 +897,31 @@ $("clearSel").addEventListener("click", () => { state.selected.clear(); updateCh
 $("expandAll").addEventListener("click", () => state.filaments.forEach((f) => { if (!f.el.hidden) f.el.open = true; }));
 $("collapseAll").addEventListener("click", () => state.filaments.forEach((f) => { f.el.open = false; }));
 $("pvClose").addEventListener("click", closePreview);
+$("pvPrint").addEventListener("click", printPreviewed);
+$("connect").addEventListener("click", toggleConnection);
+
+$("openSettings").addEventListener("click", () => { renderCalibration(); $("settings").showModal(); });
+$("closeSettings").addEventListener("click", () => $("settings").close());
+$("saveLabel").addEventListener("click", saveLabelSettings);
+$("resetLabel").addEventListener("click", () => {
+  if (labelDefaults) fillLabelForm(labelDefaults);
+  $("labelStatus").textContent = "Defaults filled in. Save to use them.";
+});
+$("printCal").addEventListener("click", printCalibration);
+
+$("optDensity").value = settings.density;
+$("optDirection").value = settings.direction;
+$("optFlip").checked = settings.flip;
+$("optOffsetX").value = String(settings.offsetX);
+$("optOffsetY").value = String(settings.offsetY);
+$("optDensity").addEventListener("change", (e) => { settings.density = e.target.value; printSettingsChanged(); });
+$("optDirection").addEventListener("change", (e) => { settings.direction = e.target.value; saveSettings(); });
+$("optFlip").addEventListener("change", (e) => { settings.flip = e.target.checked; printSettingsChanged(); });
+$("optOffsetX").addEventListener("change", (e) => { settings.offsetX = readOffset(e.target); printSettingsChanged(); });
+$("optOffsetY").addEventListener("change", (e) => { settings.offsetY = readOffset(e.target); printSettingsChanged(); });
+
+updatePrinterUi();
+loadLabelSettings();
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePreview(); });
 
 loadSpools();

@@ -100,7 +100,10 @@ def test_label_is_fetched_once_then_cached(client, api):
     assert r1.content == SVG
     label_calls = [c for c in api.calls if c.url.path.endswith("/label")]
     assert len(label_calls) == 1
-    assert dict(label_calls[0].url.params) == {"format": "svg", "size": "1"}
+    assert dict(label_calls[0].url.params) == {
+        "format": "svg", "size": "1", "slots": "nozzleTemp,bedTemp,flowRatio,tdValue",
+        "show_rgb": "true", "rgb_swatch": "false", "qr": "detail",
+    }
 
 
 def test_label_refetched_when_spool_changes(client, api, tmp_path):
@@ -109,7 +112,7 @@ def test_label_refetched_when_spool_changes(client, api, tmp_path):
     client.get("/api/spools?refresh=true")
     client.get("/api/label/AAA111")
     assert len([c for c in api.calls if c.url.path.endswith("/label")]) == 2
-    assert len(list((tmp_path / "labels").glob("AAA111-*.svg"))) == 1
+    assert len(list((tmp_path / "labels").glob("*/AAA111-*.svg"))) == 1
 
 
 def test_label_refresh_forces_fetch(client, api):
@@ -170,3 +173,72 @@ def test_status_reports_quota_and_fetch_time(client, api):
     assert status["quota"]["limit"] == 1500
     assert status["quota"]["remaining"] == 999
     assert status["spools_fetched_at"]
+
+
+# ── label settings ───────────────────────────────────────────────────────────
+
+CUSTOM = {
+    "slots": ["nozzleTemp", "bedTemp", "dryingInfo", "location"],
+    "show_rgb": True, "rgb_swatch": True, "rgb_field": "", "qr": "edit",
+}
+
+
+def label_calls(api):
+    return [c for c in api.calls if c.url.path.endswith("/label")]
+
+
+def test_settings_default_and_options(client, api):
+    body = client.get("/api/settings").json()
+    assert body["label"] == niimbatch.DEFAULT_LABEL_SETTINGS
+    assert body["options"]["slots"]["dryingInfo"] == "Drying Info (Time & Temp)"
+    assert api.calls == []
+
+
+def test_saved_settings_shape_label_request(client, api):
+    assert client.put("/api/settings", json={"label": CUSTOM}).status_code == 200
+    assert client.get("/api/settings").json()["label"] == CUSTOM
+    client.get("/api/label/AAA111")
+    params = dict(label_calls(api)[0].url.params)
+    assert params["slots"] == "nozzleTemp,bedTemp,dryingInfo,location"
+    assert params["rgb_swatch"] == "true"
+    assert params["qr"] == "edit"
+    assert "rgb_field" not in params
+
+
+def test_rgb_field_is_sent_when_set(client, api):
+    client.put("/api/settings", json={"label": {**CUSTOM, "rgb_field": "shortCode"}})
+    client.get("/api/label/AAA111")
+    assert dict(label_calls(api)[0].url.params)["rgb_field"] == "shortCode"
+
+
+def test_changing_settings_refetches_and_switching_back_is_free(client, api):
+    client.get("/api/label/AAA111")
+    client.put("/api/settings", json={"label": CUSTOM})
+    client.get("/api/label/AAA111")
+    client.put("/api/settings", json={"label": niimbatch.DEFAULT_LABEL_SETTINGS})
+    client.get("/api/label/AAA111")
+    assert len(label_calls(api)) == 2
+
+
+@pytest.mark.parametrize("bad", [
+    {**CUSTOM, "slots": ["nozzleTemp", "bedTemp", "dryingInfo"]},
+    {**CUSTOM, "slots": ["nozzleTemp", "bedTemp", "dryingInfo", "bogus"]},
+    {**CUSTOM, "show_rgb": "yes"},
+    {**CUSTOM, "rgb_field": "none"},
+    {**CUSTOM, "rgb_field": "bogus"},
+    {**CUSTOM, "qr": "somewhere"},
+    "not an object",
+])
+def test_invalid_settings_rejected_and_not_saved(client, api, bad):
+    r = client.put("/api/settings", json={"label": bad})
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "invalid_settings"
+    assert client.get("/api/settings").json()["label"] == niimbatch.DEFAULT_LABEL_SETTINGS
+
+
+def test_legacy_flat_label_cache_removed_on_start(api, tmp_path):
+    (tmp_path / "labels").mkdir()
+    (tmp_path / "labels" / "AAA111-abc.svg").write_bytes(SVG)
+    with TestClient(niimbatch.app):
+        pass
+    assert not (tmp_path / "labels" / "AAA111-abc.svg").exists()
