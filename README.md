@@ -11,6 +11,21 @@ page, on its own or followed by its spools' labels.
 
 **Unofficial.** SpoolPrint isn't affiliated with or endorsed by 3D Filament Profiles or Niimbot.
 
+## Screenshots
+
+![Spools grouped by filament, with a label preview](docs/screenshots/table.png)
+<br>*Figure 1: Spools grouped by filament, with a label preview as it will print*
+
+&nbsp;
+
+![Batch of filament and spool labels](docs/screenshots/batch.png)
+<br>*Figure 2: A batch of two filament labels, each followed by its spools*
+
+&nbsp;
+
+![Settings](docs/screenshots/settings.png)
+<br>*Figure 3: Settings for the table, spool labels and filament labels*
+
 ## Features
 
 - A sortable table of your spools: newest purchase first, or by colour, name, material, location and more.

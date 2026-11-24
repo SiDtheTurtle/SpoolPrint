@@ -1091,7 +1091,7 @@ function updatePrinterUi() {
   $("pvPrint").disabled = !connected || printer.busy || !state.rasterReady;
   $("printCal").disabled = !connected || printer.busy;
   $("printCal").title = connected ? "" : "Connect the printer first";
-  $("printBatch").disabled = state.selected.size === 0 || printer.busy;
+  $("printBatch").disabled = selectionCount() === 0 || printer.busy;
 }
 
 async function toggleConnection() {
