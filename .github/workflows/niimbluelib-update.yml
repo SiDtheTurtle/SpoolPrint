@@ -1,0 +1,63 @@
+name: Check for niimbluelib updates
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays, 06:00 UTC
+  workflow_dispatch:       # "Run workflow" button on the Actions tab
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Open a pull request if there's a newer release
+        run: |
+          current=$(sed -n 's/^ARG NIIMBLUELIB_VERSION=//p' Dockerfile)
+          latest=$(curl -fsS https://registry.npmjs.org/@mmote/niimbluelib/latest | jq -r .version)
+          echo "Pinned: $current  Latest: $latest"
+
+          newest=$(printf '%s\n' "$current" "$latest" | sort -V | tail -n 1)
+          if [ "$latest" = "$current" ] || [ "$newest" != "$latest" ]; then
+            echo "Up to date."; exit 0
+          fi
+
+          branch="niimbluelib-$latest"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "A pull request for $latest already exists."; exit 0
+          fi
+
+          sha=$(curl -fsSL "https://registry.npmjs.org/@mmote/niimbluelib/-/niimbluelib-$latest.tgz" | sha256sum | cut -d' ' -f1)
+          sed -i "s/^ARG NIIMBLUELIB_VERSION=.*/ARG NIIMBLUELIB_VERSION=$latest/; s/^ARG NIIMBLUELIB_SHA256=.*/ARG NIIMBLUELIB_SHA256=$sha/" Dockerfile
+
+          # niimbluelib is still 0.x, where a minor version can break things.
+          if [ "$(echo "$current" | cut -d. -f1-2)" != "$(echo "$latest" | cut -d. -f1-2)" ]; then
+            kind="update (may break things)"
+          else
+            kind="update"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "Update niimbluelib to $latest"
+          git push origin "$branch"
+
+          gh pr create \
+            --title "niimbluelib $kind: $current → $latest" \
+            --assignee "${{ github.repository_owner }}" \
+            --body "niimbluelib $latest is out: https://www.npmjs.com/package/@mmote/niimbluelib/v/$latest
+
+          This updates the pinned version and its SHA-256 in the Dockerfile.
+
+          To do:
+          - [ ] Build and test SpoolPrint with it, including a real print
+          - [ ] Merge
+          - [ ] Tag a release"

@@ -1,0 +1,32 @@
+# Weekly pull requests for outdated dependencies, grouped to keep the number down.
+# niimbluelib isn't covered: Dependabot can't read its pin in the Dockerfile,
+# so .github/workflows/niimbluelib-update.yml checks it instead.
+version: 2
+updates:
+  - package-ecosystem: pip          # requirements.txt and requirements-dev.txt
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: docker       # the python:3.12-slim base image
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      # Moving to a new Python version is a deliberate change, not a weekly bump.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
