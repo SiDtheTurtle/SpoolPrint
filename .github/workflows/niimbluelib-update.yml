@@ -11,12 +11,33 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Dependabot can't see niimbluelib, so check GitHub's advisory database ourselves.
+      - name: Open an issue if the pinned version has a security advisory
+        run: |
+          current=$(sed -n 's/^ARG NIIMBLUELIB_VERSION=//p' Dockerfile)
+          advisories=$(gh api "/advisories?ecosystem=npm&affects=@mmote/niimbluelib@$current" \
+            --jq '.[] | "- [\(.ghsa_id)](\(.html_url)) (\(.severity)): \(.summary)"')
+          if [ -z "$advisories" ]; then
+            echo "No advisories for niimbluelib $current."; exit 0
+          fi
+          title="Security advisory for niimbluelib $current"
+          if [ -n "$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')" ]; then
+            echo "An issue is already open."; exit 0
+          fi
+          gh issue create --title "$title" --assignee "${{ github.repository_owner }}" \
+            --body "The niimbluelib version pinned in the Dockerfile has known vulnerabilities:
+
+          $advisories
+
+          Update it (the next step of this workflow opens a pull request when a newer version exists), then tag a release."
 
       - name: Open a pull request if there's a newer release
         run: |
