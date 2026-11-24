@@ -4,14 +4,18 @@ services:
   spoolprint:
     image: ghcr.io/sidtheturtle/spoolprint:latest
     container_name: spoolprint
-    environment:
-      - TZ=Europe/London
+    restart: unless-stopped
+    # The web page. It has no password: keep it on your LAN.
+    # Printing needs HTTPS (or localhost), so put it behind a reverse proxy.
     ports:
       - "6464:6464"
+    environment:
+      - TZ=Europe/London
+    # Holds FILAMENTPROFILES_API_KEY. It stays on the server and never reaches the browser.
     env_file: .env
     volumes:
+      # Settings, printer profiles and cached labels.
       - data:/data
-    restart: unless-stopped
 
 volumes:
   data:
