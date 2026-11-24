@@ -428,3 +428,31 @@ def test_cache_status_covers_filaments(client, api):
     r = client.post("/api/labels/cache-status", json={"codes": ["CCC333"], "filaments": [101, 202, 999]})
     assert r.json() == {"cached": [], "missing": ["CCC333"], "unknown": [],
                         "filaments": {"cached": [101], "missing": [202], "unknown": [999]}}
+
+
+# ── view settings ────────────────────────────────────────────────────────────
+
+def test_view_settings_default_to_filament_grouping(client, api):
+    s = client.get("/api/settings").json()
+    assert s["view"] == {"group": "filament", "hide_empty": True}
+    assert s["defaults"]["view"] == s["view"]
+    assert list(s["options"]["group"]) == ["none", "filament", "material"]
+
+
+def test_view_settings_save_without_touching_label_settings(client, api):
+    r = client.put("/api/settings", json={"view": {"group": "material", "hide_empty": False}})
+    assert r.status_code == 200
+    assert r.json()["view"] == {"group": "material", "hide_empty": False}
+    assert r.json()["label"] == spoolprint.DEFAULT_LABEL_SETTINGS
+    assert client.get("/api/settings").json()["view"]["group"] == "material"
+
+
+@pytest.mark.parametrize("bad", [
+    {"group": "brand", "hide_empty": True},
+    {"group": "none", "hide_empty": "yes"},
+    {"group": "none"},
+    ["none"],
+])
+def test_invalid_view_settings_are_rejected(client, api, bad):
+    assert client.put("/api/settings", json={"view": bad}).status_code == 400
+    assert client.get("/api/settings").json()["view"] == {"group": "filament", "hide_empty": True}

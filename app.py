@@ -269,13 +269,40 @@ def label_params(settings: dict) -> dict:
     return params
 
 
+# How the table opens, shared by every device. The page can still change the
+# grouping for a visit; this is what it starts with.
+DEFAULT_VIEW_SETTINGS = {"group": "filament", "hide_empty": True}
+GROUP_OPTIONS = {"none": "None", "filament": "Filament", "material": "Material"}
+
+
+def validate_view_settings(s: object) -> dict:
+    if not isinstance(s, dict):
+        raise ApiError(400, "invalid_settings", "View settings must be a JSON object.")
+    if s.get("group") not in GROUP_OPTIONS:
+        raise ApiError(400, "invalid_settings", f"group must be one of: {', '.join(GROUP_OPTIONS)}.")
+    if not isinstance(s.get("hide_empty"), bool):
+        raise ApiError(400, "invalid_settings", "hide_empty must be true or false.")
+    return {"group": s["group"], "hide_empty": s["hide_empty"]}
+
+
+def load_view_settings() -> dict:
+    stored = read_settings_file().get("view") or {}
+    try:
+        return validate_view_settings({**DEFAULT_VIEW_SETTINGS, **stored})
+    except ApiError:
+        return dict(DEFAULT_VIEW_SETTINGS)
+
+
 @app.get("/api/settings")
 def get_settings():
     return {
         "label": load_label_settings(),
         "filament_label": load_label_settings(filament=True),
-        "defaults": {"label": DEFAULT_LABEL_SETTINGS, "filament_label": DEFAULT_FILAMENT_LABEL_SETTINGS},
-        "options": {"slots": SLOT_OPTIONS, "qr": QR_OPTIONS, "spool_only": sorted(SPOOL_ONLY_SLOTS)},
+        "view": load_view_settings(),
+        "defaults": {"label": DEFAULT_LABEL_SETTINGS, "filament_label": DEFAULT_FILAMENT_LABEL_SETTINGS,
+                     "view": DEFAULT_VIEW_SETTINGS},
+        "options": {"slots": SLOT_OPTIONS, "qr": QR_OPTIONS, "spool_only": sorted(SPOOL_ONLY_SLOTS),
+                    "group": GROUP_OPTIONS},
     }
 
 
@@ -285,14 +312,16 @@ async def put_settings(request: Request):
         body = await request.json()
     except ValueError:
         raise ApiError(400, "invalid_settings", "Settings must be JSON.")
-    if not isinstance(body, dict) or not ({"label", "filament_label"} & set(body)):
-        raise ApiError(400, "invalid_settings", "Send label and/or filament_label settings.")
+    if not isinstance(body, dict) or not ({"label", "filament_label", "view"} & set(body)):
+        raise ApiError(400, "invalid_settings", "Send label, filament_label and/or view settings.")
     # Validate everything before saving anything.
     clean = {}
     if "label" in body:
         clean["label"] = validate_label_settings(body["label"])
     if "filament_label" in body:
         clean["filament_label"] = validate_label_settings(body["filament_label"], filament=True)
+    if "view" in body:
+        clean["view"] = validate_view_settings(body["view"])
     for key, value in clean.items():
         update_settings_file(key, value)
     return get_settings()

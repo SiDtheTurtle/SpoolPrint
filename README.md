@@ -35,8 +35,8 @@ page, on its own or followed by its spools' labels.
 ## Deploy
 
 ```bash
-curl -O https://raw.githubusercontent.com/SiDtheTurtle/spoolprint/main/compose.yml
-curl -o .env https://raw.githubusercontent.com/SiDtheTurtle/spoolprint/main/.env.example
+curl -O https://raw.githubusercontent.com/SiDtheTurtle/SpoolPrint/main/compose.yml
+curl -o .env https://raw.githubusercontent.com/SiDtheTurtle/SpoolPrint/main/.env.example
 # edit .env and paste in your API key
 docker compose up -d
 ```
@@ -56,8 +56,9 @@ is never sent to the browser.
 2. **Settings.** Choose what the labels show. If the print isn't centred, print the calibration label and
    adjust the offset. Printer settings are saved for each printer, by its Bluetooth name.
 3. **Preview** a spool to see its label exactly as it will print, then **Print this label**.
-4. **Batches.** Tick spools, or whole groups, then **Print labels**. To include filament labels, group by
-   filament and tick **Filament label** on a group. Each filament's label prints before its spools.
+4. **Batches.** Tick spools, then **Print labels**. To include filament labels, group by filament and tick
+   the filament's own row. Each filament's label prints before its spools. Grouped by material, ticking a
+   group selects all its spools.
 
 **Refresh list** fetches your spools again after you change them on 3D Filament Profiles.
 

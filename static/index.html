@@ -5,19 +5,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SpoolPrint</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>
+  try {
+    const t = JSON.parse(localStorage.getItem("spoolprint.theme"));
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
 <style>
   :root {
     --bg: #f4f6f9; --surface: #ffffff; --ink: #14202e; --muted: #5f6b7a; --line: #d8dfe8;
-    --accent: #1a4a7a; --accent-soft: #e2ebf5; --ok: #2e6b45; --warn: #a86a00; --bad: #c0392b;
+    --accent: #1a4a7a; --accent-soft: #e2ebf5; --ok: #2e6b45; --warn: #c25e00; --bad: #c0392b;
     --group: #eaeff5;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color-scheme: light;
   }
+  /* Dark follows the device unless the theme switch picked light or dark. */
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg: #0e141c; --surface: #151e29; --ink: #e5ebf2; --muted: #8a97a7; --line: #283444;
-      --accent: #8ab4e0; --accent-soft: #1c2e44; --ok: #6cbf8a; --warn: #e0a84a; --bad: #e6786b;
+      --accent: #8ab4e0; --accent-soft: #1c2e44; --ok: #6cbf8a; --warn: #f0924a; --bad: #e6786b;
       --group: #1a2533;
+      color-scheme: dark;
     }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e141c; --surface: #151e29; --ink: #e5ebf2; --muted: #8a97a7; --line: #283444;
+    --accent: #8ab4e0; --accent-soft: #1c2e44; --ok: #6cbf8a; --warn: #f0924a; --bad: #e6786b;
+    --group: #1a2533;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }  /* otherwise rules that set display win */
@@ -42,8 +57,8 @@
   h1 { font-size: 1.25rem; margin: 0; margin-right: auto; display: inline-flex; align-items: center; gap: 10px; }
   h1 img { width: 32px; height: 32px; }
   .meta { color: var(--muted); font-size: .85rem; }
-  .meta.low { color: var(--warn); }
-  .meta.bad { color: var(--bad); }
+  .meta.low { color: var(--warn); font-weight: 700; }
+  .meta.bad { color: var(--bad); font-weight: 700; }
 
   .printer {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
@@ -52,7 +67,20 @@
   .printer .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
   .printer.connected .dot { background: var(--ok); }
   .printer.busy .dot { background: var(--warn); }
-  #btStatus { margin-right: auto; }
+  #fetched { margin-right: auto; }
+  .theme-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; }
+  .theme-toggle button {
+    display: grid; place-items: center; width: 30px; height: 26px; padding: 0;
+    border: 0; border-radius: 999px; background: none; color: var(--muted);
+  }
+  .theme-toggle button:hover { color: var(--ink); }
+  .theme-toggle button[aria-checked="true"] { background: var(--accent-soft); color: var(--accent); }
+  #btStatus { max-width: calc(100% - 23px); }  /* keeps the dot beside the text when it wraps */
+  footer {
+    padding: 16px; border-top: 1px solid var(--line); text-align: center;
+    color: var(--muted); font-size: .8rem;
+  }
+  footer a { color: inherit; }
   #btStatus small { color: var(--muted); }
 
   dialog#settings {
@@ -145,8 +173,9 @@
   .gline { display: flex; align-items: center; gap: 4px; }
   .gline .gtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .gline .gextra { margin-left: auto; display: flex; align-items: center; gap: 10px; font-weight: normal; }
-  .flabel { display: flex; align-items: center; gap: 6px; font-size: .88rem; cursor: pointer; }
-  tbody tr.spool td.first-in-group { padding-left: 8px; }
+  /* Spools under a group sit under the group's name. */
+  tbody tr.spool.child td.sw { padding-left: 58px; }
+  @media (max-width: 700px) { tbody tr.spool.child td.sw { padding-left: 22px; } }
   td button { padding: 2px 8px; font-size: .85rem; }
   .swatch {
     display: block; width: 20px; height: 20px; border-radius: 50%;
@@ -159,6 +188,14 @@
     background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   }
   #preview h2 { font-size: 1rem; margin: 0 0 2px; font-family: var(--mono); }
+  .pv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .icon-btn {
+    display: grid; place-items: center; width: 28px; height: 28px; padding: 0; flex: none;
+    border-color: transparent; background: none; color: var(--muted); margin: -4px -4px 0 0;
+  }
+  .icon-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--line); }
+  .fold { display: inline-flex; gap: 2px; margin-left: -6px; }
+  .fold .icon-btn { margin: 0; }
   #preview .sub { color: var(--muted); font-size: .85rem; margin-bottom: 10px; }
   .label-box {
     background: #fff; border: 1px solid var(--line); border-radius: 4px; aspect-ratio: 4 / 3;
@@ -198,15 +235,23 @@
 <body>
 <header>
   <h1><img src="/logo.svg" alt="">SpoolPrint</h1>
-  <span class="meta" id="quota"></span>
-  <span class="meta" id="fetched"></span>
-  <button id="refresh" title="Fetch the spool list again (1 API request)">Refresh list</button>
+  <div class="theme-toggle" role="radiogroup" aria-label="Colour scheme">
+    <button type="button" role="radio" data-theme-choice="auto" title="Match device">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+    <button type="button" role="radio" data-theme-choice="light" title="Light">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    <button type="button" role="radio" data-theme-choice="dark" title="Dark">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+  </div>
 </header>
 
 <div class="printer" id="printerBar">
   <span class="dot"></span>
   <span id="btStatus">Printer not connected</span>
+  <span class="meta" id="quota"></span>
+  <span class="meta" id="fetched"></span>
   <button id="openSettings">Settings</button>
+  <button id="refresh" title="Fetch the spool list again from 3D Filament Profiles (1 API request)">Refresh list</button>
   <button id="connect" class="primary">Connect printer</button>
 </div>
 
@@ -215,6 +260,17 @@
     <h2 id="settingsTitle">Settings</h2>
     <button id="closeSettings">Close</button>
   </div>
+
+  <section>
+    <h3>Table</h3>
+    <p class="hint">Shared by every device. The Group by menu above the table can still change the grouping
+      for a visit.</p>
+    <div class="fields">
+      <label>Group by when the page opens <select id="viewGroup"></select></label>
+      <label class="check"><input type="checkbox" id="viewHideEmpty"> Hide empty spools</label>
+    </div>
+    <div class="row"><span id="viewStatus" class="hint"></span></div>
+  </section>
 
   <section>
     <h3>Spool labels</h3>
@@ -306,7 +362,12 @@
       <option value="material">Material</option>
     </select>
   </label>
-  <label><input type="checkbox" id="hideEmpty" checked> Hide empty</label>
+  <span class="fold" id="foldButtons">
+    <button type="button" id="expandAll" class="icon-btn" title="Expand all groups" aria-label="Expand all groups">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg></button>
+    <button type="button" id="collapseAll" class="icon-btn" title="Collapse all groups" aria-label="Collapse all groups">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 20l5-5 5 5M7 4l5 5 5-5"/></svg></button>
+  </span>
 </div>
 
 <div class="selbar">
@@ -314,9 +375,6 @@
   <button id="selectShown">Select all shown</button>
   <button id="clearSel">Clear</button>
   <button id="printBatch" class="primary" disabled>Print labels</button>
-  <span class="spacer"></span>
-  <button id="expandAll">Expand all</button>
-  <button id="collapseAll">Collapse all</button>
 </div>
 
 <main>
@@ -327,7 +385,12 @@
     </table>
   </div>
   <aside id="preview" hidden>
-    <h2 id="pvCode"></h2>
+    <div class="pv-head">
+      <h2 id="pvCode"></h2>
+      <button type="button" id="pvX" class="icon-btn" title="Close preview" aria-label="Close preview">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
     <div class="sub" id="pvSub"></div>
     <div class="label-box" id="pvBox"></div>
     <div class="raster-title">As sent to the printer (320 × 240 dots, black and white)</div>
@@ -335,11 +398,15 @@
     <div class="preview-actions">
       <a id="pvLink" target="_blank" rel="noopener">Open spool page</a>
       <button id="pvPrint" class="primary" disabled>Print this label</button>
-      <button id="pvClose">Close</button>
     </div>
     <div id="pvProgress"></div>
   </aside>
 </main>
+
+<footer>
+  SpoolPrint · Unofficial tool, not affiliated with 3D Filament Profiles or Niimbot ·
+  <a href="https://github.com/SiDtheTurtle/SpoolPrint" target="_blank" rel="noopener">View on GitHub</a>
+</footer>
 
 <script src="/vendor/niimbluelib.min.js"></script>
 <script>
@@ -355,7 +422,7 @@ const state = {
   collapsed: new Set(),   // group keys the user has collapsed
   shown: [],              // spools currently passing the filters, in display order
   rowChecks: new Map(),   // short_code -> row checkbox
-  filamentChecks: new Map(), // filament id -> "Filament label" checkbox
+  filamentChecks: new Map(), // filament id -> its group checkbox (picks the filament label)
   groupChecks: [],        // [{ cb, codes }]
   previewItem: null,      // the spool or filament label being previewed
   previewUrl: null,       // object URL of the label being previewed
@@ -454,7 +521,9 @@ async function loadStatus() {
       q.className = "meta bad";
     } else if (s.quota) {
       q.textContent = `${s.quota.remaining} of ${s.quota.limit} API requests left`;
-      q.className = "meta" + (s.quota.remaining < 100 ? " low" : "");
+      // Bold amber under a third left, bold red under a tenth.
+      const left = s.quota.remaining / s.quota.limit;
+      q.className = "meta" + (left < 0.1 ? " bad" : left < 1 / 3 ? " low" : "");
     } else {
       q.textContent = "";
     }
@@ -475,11 +544,28 @@ for (const key of ["view", "lastPrinter", "print"]) {
   } catch { /* storage unavailable */ }
 }
 
+// ── theme ────────────────────────────────────────────────────────────────────
+
+const THEME_KEY = "spoolprint.theme";
+
+function applyTheme(theme) {
+  if (theme === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  for (const b of document.querySelectorAll("[data-theme-choice]")) {
+    b.setAttribute("aria-checked", String(b.dataset.themeChoice === theme));
+  }
+}
+
+// ── view ─────────────────────────────────────────────────────────────────────
+
 const VIEW_KEY = "spoolprint.view";
-const view = { sort: "purchase_date", dir: -1, group: "none", hideEmpty: true, ...readLocal(VIEW_KEY, {}) };
+// Sort order is remembered per browser. Grouping and hiding empty spools start
+// from the shared Table settings, loaded before the first render.
+const savedView = readLocal(VIEW_KEY, {});
+const view = { sort: savedView.sort || "purchase_date", dir: savedView.dir || -1, group: "filament", hideEmpty: true };
 
 function saveView() {
-  writeLocal(VIEW_KEY, { sort: view.sort, dir: view.dir, group: view.group, hideEmpty: view.hideEmpty });
+  writeLocal(VIEW_KEY, { sort: view.sort, dir: view.dir });
 }
 
 // ── table ────────────────────────────────────────────────────────────────────
@@ -566,7 +652,7 @@ function groupOf(s) {
   return null;
 }
 
-function spoolRow(s) {
+function spoolRow(s, child = false) {
   const cb = el("input", { type: "checkbox", checked: state.selected.has(s.short_code), "aria-label": `Select ${s.short_code}` });
   cb.addEventListener("click", (e) => e.stopPropagation());
   cb.addEventListener("change", () => setSelected([s.short_code], cb.checked));
@@ -577,7 +663,7 @@ function spoolRow(s) {
   previewBtn.addEventListener("click", (e) => { e.stopPropagation(); showPreview(spoolItem(s)); });
 
   const previewing = state.previewItem?.key === s.short_code;
-  const tr = el("tr", { class: "spool" + (isSpent(s) ? " spent" : "") + (previewing ? " previewing" : "") },
+  const tr = el("tr", { class: "spool" + (child ? " child" : "") + (isSpent(s) ? " spent" : "") + (previewing ? " previewing" : "") },
     el("td", { class: "sel" }, cb),
     el("td", { class: "sw" }, el("span", { class: "swatch", style: `background:${s.rgb || "transparent"}`, title: s.rgb || "" })),
     el("td", { class: "clip c-colour", title: s.color || "" }, s.color || "—"),
@@ -595,32 +681,37 @@ function spoolRow(s) {
 }
 
 function groupRow(group, spools) {
-  const codes = spools.map((s) => s.short_code);
-  const cb = el("input", { type: "checkbox", "aria-label": "Select this group" });
-  cb.addEventListener("click", (e) => e.stopPropagation());
-  cb.addEventListener("change", () => setSelected(codes, cb.checked));
-  state.groupChecks.push({ cb, codes });
-
   const first = group.spool;
+  const fid = first.filament_id;
+
+  // Filament groups: the checkbox picks the filament's own label.
+  // Material groups have no label of their own, so it picks all their spools.
+  let cb;
+  if (group.kind === "filament") {
+    cb = el("input", { type: "checkbox", checked: state.selectedFilaments.has(fid),
+                       "aria-label": "Select the filament label", title: "Print this filament's label" });
+    cb.addEventListener("change", () => setFilamentSelected([fid], cb.checked));
+    state.filamentChecks.set(fid, cb);
+  } else {
+    const codes = spools.map((s) => s.short_code);
+    cb = el("input", { type: "checkbox", "aria-label": "Select all spools in this group" });
+    cb.addEventListener("change", () => setSelected(codes, cb.checked));
+    state.groupChecks.push({ cb, codes });
+  }
+  cb.addEventListener("click", (e) => e.stopPropagation());
+
   const collapsed = state.collapsed.has(group.key);
   const title = group.kind === "filament"
     ? [el("span", { class: "swatch gswatch", style: `background:${first.rgb || "transparent"}` }),
        first.color || "Unknown colour", el("small", {}, `${first.brand} · ${materialName(first)}`)]
     : [materialName(first) || "Unknown material"];
 
-  // Filament groups can also print a filament label.
   let extra = null;
   if (group.kind === "filament") {
-    const fid = first.filament_id;
-    const fcb = el("input", { type: "checkbox", checked: state.selectedFilaments.has(fid) });
-    fcb.addEventListener("change", () => setFilamentSelected([fid], fcb.checked));
-    state.filamentChecks.set(fid, fcb);
-    const flabel = el("label", { class: "flabel", title: "Include this filament's label in the batch" }, fcb, "Filament label");
     const fpreview = el("button", { type: "button", title: "Preview filament label" },
       el("span", { class: "btn-long" }, "Preview"), el("span", { class: "btn-short" }, "View"));
-    fpreview.addEventListener("click", () => showPreview(filamentItem(fid)));
-    extra = el("span", { class: "gextra" }, flabel, fpreview);
-    for (const node of [flabel, fpreview]) node.addEventListener("click", (e) => e.stopPropagation());
+    fpreview.addEventListener("click", (e) => { e.stopPropagation(); showPreview(filamentItem(fid)); });
+    extra = el("span", { class: "gextra" }, fpreview);
   }
 
   const previewing = group.kind === "filament" && state.previewItem?.key === `f${first.filament_id}`;
@@ -664,13 +755,13 @@ function render() {
     }
     for (const { group, spools } of groups.values()) {
       frag.append(groupRow(group, spools));
-      if (!state.collapsed.has(group.key)) for (const s of spools) frag.append(spoolRow(s));
+      if (!state.collapsed.has(group.key)) for (const s of spools) frag.append(spoolRow(s, true));
     }
   }
   $("rows").replaceChildren(frag);
 
   const grouped = view.group !== "none";
-  $("expandAll").hidden = $("collapseAll").hidden = !grouped;
+  $("foldButtons").hidden = !grouped;
   updateSelectionUi();
 }
 
@@ -720,7 +811,7 @@ function updateSelectionUi() {
   }
   const spools = state.selected.size, filaments = state.selectedFilaments.size, n = spools + filaments;
   $("selCount").textContent = filaments
-    ? `${plural(spools, "spool label")} + ${plural(filaments, "filament label")} selected`
+    ? [spools && plural(spools, "spool label"), plural(filaments, "filament label")].filter(Boolean).join(" + ") + " selected"
     : `${n} selected`;
   $("clearSel").disabled = n === 0;
   $("printBatch").textContent = n ? `Print ${plural(n, "label")}` : "Print labels";
@@ -1428,8 +1519,34 @@ async function loadLabelSettings() {
       if (f.qr) $(f.qr).replaceChildren(...Object.entries(s.options.qr).map(([v, name]) => el("option", { value: v }, name)));
       fillLabelForm(kind, s[kind]);
     }
+    $("viewGroup").replaceChildren(...Object.entries(s.options.group).map(([v, name]) => el("option", { value: v }, name)));
+    applyViewSettings(s.view);
   } catch (e) {
     $("labelStatus").textContent = `Could not load label settings: ${e.message}`;
+  }
+}
+
+function applyViewSettings(v) {
+  $("viewGroup").value = v.group;
+  $("viewHideEmpty").checked = v.hide_empty;
+  view.group = v.group;
+  view.hideEmpty = v.hide_empty;
+  $("groupBy").value = v.group;
+  state.collapsed.clear();
+}
+
+async function saveViewSettings() {
+  const status = $("viewStatus");
+  status.textContent = "Saving…";
+  try {
+    const s = await apiSend("PUT", "/api/settings", {
+      view: { group: $("viewGroup").value, hide_empty: $("viewHideEmpty").checked },
+    });
+    applyViewSettings(s.view);
+    render();
+    status.textContent = "Saved.";
+  } catch (e) {
+    status.textContent = `Not saved: ${e.message}`;
   }
 }
 
@@ -1523,20 +1640,29 @@ function closePreview() {
 // ── wiring ───────────────────────────────────────────────────────────────────
 
 $("refresh").addEventListener("click", () => loadSpools(true));
+for (const b of document.querySelectorAll("[data-theme-choice]")) {
+  b.addEventListener("click", () => { writeLocal(THEME_KEY, b.dataset.themeChoice); applyTheme(b.dataset.themeChoice); });
+}
+applyTheme(document.documentElement.dataset.theme || "auto");
 $("search").addEventListener("input", render);
 $("location").addEventListener("change", render);
-$("groupBy").value = view.group;
-$("groupBy").addEventListener("change", (e) => { view.group = e.target.value; state.collapsed.clear(); saveView(); render(); });
-$("hideEmpty").checked = view.hideEmpty;
-$("hideEmpty").addEventListener("change", (e) => { view.hideEmpty = e.target.checked; saveView(); render(); });
-$("selectShown").addEventListener("click", () => setSelected(state.shown.map((s) => s.short_code), true));
+$("groupBy").addEventListener("change", (e) => { view.group = e.target.value; state.collapsed.clear(); render(); });
+$("viewGroup").addEventListener("change", saveViewSettings);
+$("viewHideEmpty").addEventListener("change", saveViewSettings);
+$("selectShown").addEventListener("click", () => {
+  // Filament labels are only on screen when grouped by filament.
+  if (view.group === "filament") {
+    for (const s of state.shown) state.selectedFilaments.add(s.filament_id);
+  }
+  setSelected(state.shown.map((s) => s.short_code), true);
+});
 $("clearSel").addEventListener("click", () => { state.selected.clear(); state.selectedFilaments.clear(); updateSelectionUi(); });
 $("expandAll").addEventListener("click", () => { state.collapsed.clear(); render(); });
 $("collapseAll").addEventListener("click", () => {
   for (const s of state.shown) state.collapsed.add(groupOf(s).key);
   render();
 });
-$("pvClose").addEventListener("click", closePreview);
+$("pvX").addEventListener("click", closePreview);
 $("pvPrint").addEventListener("click", printPreviewed);
 $("printBatch").addEventListener("click", openBatch);
 // Esc must not close the batch dialog while it is downloading or printing.
@@ -1564,9 +1690,9 @@ $("optOffsetY").addEventListener("change", (e) => { printerSettings.offset_y = r
 
 renderHead();
 updatePrinterUi();
-loadLabelSettings();
+// Spools wait for the settings, so the table opens with the right grouping.
+loadLabelSettings().finally(() => loadSpools());
 loadPrinterProfile(printerProfile);
-loadSpools();
 </script>
 </body>
 </html>
