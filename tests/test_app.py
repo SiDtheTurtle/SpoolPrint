@@ -288,3 +288,25 @@ def test_invalid_printer_settings_rejected(client, api, bad):
 def test_invalid_printer_name_rejected(client, api):
     assert client.get("/api/printers/bad%2Fname").status_code in (400, 404)
     assert client.put("/api/printers/" + "x" * 65, json=B1).status_code == 400
+
+
+# ── batch cache status ───────────────────────────────────────────────────────
+
+def test_cache_status_reports_cached_missing_and_unknown(client, api):
+    client.get("/api/label/AAA111")
+    calls_before = len(api.calls)
+    r = client.post("/api/labels/cache-status", json={"codes": ["AAA111", "BBB222", "NOPE99"]})
+    assert r.json() == {"cached": ["AAA111"], "missing": ["BBB222"], "unknown": ["NOPE99"]}
+    assert len(api.calls) == calls_before  # checking costs nothing
+
+
+def test_cache_status_follows_label_settings(client, api):
+    client.get("/api/label/AAA111")
+    client.put("/api/settings", json={"label": CUSTOM})
+    r = client.post("/api/labels/cache-status", json={"codes": ["AAA111"]})
+    assert r.json()["missing"] == ["AAA111"]
+
+
+@pytest.mark.parametrize("bad", [{}, {"codes": "AAA111"}, {"codes": [1, 2]}, []])
+def test_cache_status_rejects_bad_body(client, api, bad):
+    assert client.post("/api/labels/cache-status", json=bad).status_code == 400

@@ -334,6 +334,41 @@ async def put_printer_settings(name: str, request: Request):
 
 # ── labels ────────────────────────────────────────────────────────────────────
 
+def label_cache_path(spool: dict, params: dict) -> Path:
+    """
+    One cache folder per combination of label settings, so switching back to
+    settings used before costs nothing. Within it, the file name changes when
+    the spool does, so a stale label is never served.
+    """
+    params_tag = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:10]
+    version = hashlib.sha1(str(spool.get("updated_at")).encode()).hexdigest()[:12]
+    return DATA_DIR / "labels" / params_tag / f"{spool['short_code']}-{version}.svg"
+
+
+@app.post("/api/labels/cache-status")
+async def labels_cache_status(request: Request):
+    """Which of these spools' labels are cached, so the page can show the API cost of a batch."""
+    try:
+        body = await request.json()
+    except ValueError:
+        raise ApiError(400, "invalid_request", "Body must be JSON.")
+    codes = body.get("codes") if isinstance(body, dict) else None
+    if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes) or len(codes) > 1000:
+        raise ApiError(400, "invalid_request", "codes must be a list of spool codes.")
+    spools = {s.get("short_code"): s for s in (await load_spools())["spools"]}
+    params = label_params(load_label_settings())
+    result = {"cached": [], "missing": [], "unknown": []}
+    for code in codes:
+        spool = spools.get(code)
+        if spool is None:
+            result["unknown"].append(code)
+        elif label_cache_path(spool, params).exists():
+            result["cached"].append(code)
+        else:
+            result["missing"].append(code)
+    return result
+
+
 @app.get("/api/label/{short_code}")
 async def get_label(short_code: str, refresh: bool = False):
     if not SHORT_CODE_RE.fullmatch(short_code):
@@ -343,14 +378,9 @@ async def get_label(short_code: str, refresh: bool = False):
     if spool is None:
         raise ApiError(404, "unknown_spool", f"Spool {short_code} is not in the spool list. Try Refresh.")
 
-    # One cache folder per combination of label settings, so switching back to
-    # settings used before costs nothing. Within it, the file name changes when
-    # the spool does, so a stale label is never served.
     params = label_params(load_label_settings())
-    params_tag = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:10]
-    version = hashlib.sha1(str(spool.get("updated_at")).encode()).hexdigest()[:12]
-    labels_dir = DATA_DIR / "labels" / params_tag
-    path = labels_dir / f"{short_code}-{version}.svg"
+    path = label_cache_path(spool, params)
+    labels_dir = path.parent
 
     async with app.state.label_locks.setdefault(short_code, asyncio.Lock()):
         if refresh or not path.exists():

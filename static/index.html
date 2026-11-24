@@ -58,7 +58,16 @@
     width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
     background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
   }
-  dialog#settings::backdrop { background: rgba(0, 0, 0, .35); }
+  dialog#settings::backdrop, dialog#batch::backdrop { background: rgba(0, 0, 0, .35); }
+  dialog#batch {
+    width: min(520px, calc(100vw - 32px)); padding: 0;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px;
+  }
+  #batchSummary { margin: 0 0 10px; }
+  .progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+  #batchBar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .problems { margin: 8px 0 0; padding-left: 20px; color: var(--bad); font-size: .9rem; max-height: 160px; overflow: auto; }
+  .row.end { justify-content: flex-end; }
   .settings-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; border-bottom: 1px solid var(--line);
@@ -250,6 +259,17 @@
   </section>
 </dialog>
 
+<dialog id="batch" aria-labelledby="batchTitle">
+  <div class="settings-head"><h2 id="batchTitle">Print labels</h2></div>
+  <section>
+    <p id="batchSummary"></p>
+    <div class="progress" id="batchProgress" hidden><div id="batchBar"></div></div>
+    <p id="batchStatus" class="hint"></p>
+    <ul id="batchProblems" class="problems" hidden></ul>
+    <div class="row" id="batchActions"></div>
+  </section>
+</dialog>
+
 <div id="error" class="banner" role="alert" hidden></div>
 
 <div class="toolbar">
@@ -269,6 +289,7 @@
   <strong id="selCount">0 selected</strong>
   <button id="selectShown">Select all shown</button>
   <button id="clearSel">Clear</button>
+  <button id="printBatch" class="primary" disabled>Print labels</button>
   <span class="spacer"></span>
   <button id="expandAll">Expand all</button>
   <button id="collapseAll">Collapse all</button>
@@ -632,6 +653,8 @@ function updateSelectionUi() {
   const n = state.selected.size;
   $("selCount").textContent = `${n} selected`;
   $("clearSel").disabled = n === 0;
+  $("printBatch").textContent = n ? `Print ${n} label${n === 1 ? "" : "s"}` : "Print labels";
+  $("printBatch").disabled = n === 0 || printer.busy;
 }
 
 // ── spools ───────────────────────────────────────────────────────────────────
@@ -881,6 +904,7 @@ function updatePrinterUi() {
   $("pvPrint").disabled = !connected || printer.busy || !state.rasterReady;
   $("printCal").disabled = !connected || printer.busy;
   $("printCal").title = connected ? "" : "Connect the printer first";
+  $("printBatch").disabled = state.selected.size === 0 || printer.busy;
 }
 
 async function toggleConnection() {
@@ -901,11 +925,7 @@ async function toggleConnection() {
       updatePrinterUi();
     }
   });
-  client.on("printprogress", (e) => {
-    if (printer.statusEl) {
-      printer.statusEl.textContent = `Printing label ${e.page} of ${e.pagesTotal}… ${e.pagePrintProgress}%`;
-    }
-  });
+  client.on("printprogress", (e) => printer.onProgress?.(e));
 
   printer.connecting = true;
   updatePrinterUi();
@@ -926,9 +946,15 @@ async function toggleConnection() {
   }
 }
 
-/** Print each canvas as one label, in a single print job, reporting progress in statusEl. */
-async function printCanvases(canvases, statusEl) {
-  printer.statusEl = statusEl;
+/**
+ * Print each canvas as one label, in a single print job.
+ * Options: onProgress(event) for the library's progress events, onPageStart(i),
+ * onPageDone(i), and isCancelled() which is checked before each label, so a
+ * cancel stops after the label being printed.
+ * Returns { printed, cancelled }. On failure the error carries `printed`.
+ */
+async function printCanvases(canvases, { onProgress, onPageStart, onPageDone, isCancelled } = {}) {
+  if (!printer.client) throw new Error("The printer is not connected.");
   const { ImageEncoder, PageColorType, LabelType } = niimbluelib;
   const task = printer.client.protocol.newPrintTask(printer.task, {
     totalPages: canvases.length,
@@ -939,20 +965,38 @@ async function printCanvases(canvases, statusEl) {
     statusTimeoutMs: 8000,
   });
   printer.busy = true;
+  printer.onProgress = onProgress;
   updatePrinterUi();
+  let printed = 0;
+  let cancelled = false;
   try {
     await task.printInit();
-    for (const canvas of canvases) {
-      const encoded = ImageEncoder.encodeCanvas(canvas, PageColorType.SingleColor, printerSettings.direction);
+    for (let i = 0; i < canvases.length; i++) {
+      if (isCancelled?.()) { cancelled = true; break; }
+      onPageStart?.(i);
+      const encoded = ImageEncoder.encodeCanvas(canvases[i], PageColorType.SingleColor, printerSettings.direction);
       await task.printPage(encoded, 1);
       await task.waitForPageFinished();
+      printed++;
+      onPageDone?.(i);
     }
-    await task.waitForFinished();
+    // After a cancel the job has fewer pages than announced, so don't wait for the rest.
+    if (!cancelled) await task.waitForFinished();
+    return { printed, cancelled };
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    err.printed = printed;
+    throw err;
   } finally {
     await task.printEnd().catch(() => {});
     printer.busy = false;
+    printer.onProgress = null;
     updatePrinterUi();
   }
+}
+
+function progressText(e) {
+  return `Printing… ${e.pagePrintProgress}%`;
 }
 
 async function printPreviewed() {
@@ -963,7 +1007,7 @@ async function printPreviewed() {
   const status = $("pvProgress");
   status.textContent = "Starting print…";
   try {
-    await printCanvases([copy], status);
+    await printCanvases([copy], { onProgress: (e) => { status.textContent = progressText(e); } });
     status.textContent = `Printed ${code}.`;
   } catch (e) {
     status.textContent = `Print failed: ${e?.message || e}`;
@@ -976,10 +1020,223 @@ async function printCalibration() {
   const status = $("calStatus");
   status.textContent = "Starting print…";
   try {
-    await printCanvases([canvas], status);
+    await printCanvases([canvas], { onProgress: (e) => { status.textContent = progressText(e); } });
     status.textContent = "Calibration label printed.";
   } catch (e) {
     status.textContent = `Print failed: ${e?.message || e}`;
+  }
+}
+
+// ── batch printing ───────────────────────────────────────────────────────────
+
+const batch = { running: false, cancelled: false, spools: [] };
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function actionButton(text, onClick, primary = false) {
+  const b = el("button", { type: "button", class: primary ? "primary" : "" }, text);
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function setBatch({ summary, status, progress, problems, actions }) {
+  if (summary !== undefined) $("batchSummary").textContent = summary;
+  if (status !== undefined) $("batchStatus").textContent = status;
+  if (progress !== undefined) {
+    $("batchProgress").hidden = progress === null;
+    $("batchBar").style.width = `${Math.round((progress || 0) * 100)}%`;
+  }
+  if (problems !== undefined) {
+    $("batchProblems").hidden = !problems.length;
+    $("batchProblems").replaceChildren(...problems.map((p) => el("li", {}, `${p.spool.short_code} (${p.spool.color}): ${p.message}`)));
+  }
+  if (actions !== undefined) $("batchActions").replaceChildren(...actions);
+}
+
+/** Selected spools in the table's current sort order (including any hidden by filters). */
+function selectedInOrder() {
+  return state.spools.filter((s) => state.selected.has(s.short_code)).sort(compareSpools);
+}
+
+async function fetchLabelBlob(code) {
+  const r = await fetch(`/api/label/${encodeURIComponent(code)}`);
+  if (!r.ok) {
+    const body = await r.json().catch(() => null);
+    throw new Error(body?.error?.message || `Server returned HTTP ${r.status}.`);
+  }
+  return r.blob();
+}
+
+/** Run fn over items with at most `limit` running at once. */
+async function mapLimit(items, limit, fn) {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+const closeBatchButton = () => actionButton("Close", () => $("batch").close());
+
+async function openBatch() {
+  const spools = selectedInOrder();
+  if (!spools.length || batch.running) return;
+  batch.spools = spools;
+  $("batchTitle").textContent = `Print ${plural(spools.length, "label")}`;
+  setBatch({ summary: "Checking which labels are already downloaded…", status: "", progress: null, problems: [], actions: [closeBatchButton()] });
+  $("batch").showModal();
+
+  let cache, status;
+  try {
+    [cache, status] = await Promise.all([
+      apiSend("POST", "/api/labels/cache-status", { codes: spools.map((s) => s.short_code) }),
+      apiJson("/api/status"),
+    ]);
+  } catch (e) {
+    setBatch({ summary: `Could not check the labels: ${e.message}` });
+    return;
+  }
+
+  const missing = cache.missing.length;
+  const lines = [`Prints in the table's current order.`];
+  lines.push(missing
+    ? `${plural(missing, "label")} to download first: ${plural(missing, "API request")}` +
+      (status.quota ? ` (${status.quota.remaining} left this month).` : ".")
+    : "All labels are already downloaded, so no API requests are needed.");
+  const hidden = spools.filter((s) => !state.shown.includes(s)).length;
+  if (hidden) lines.push(`${plural(hidden, "selected spool")} ${hidden === 1 ? "is" : "are"} hidden by the current filters but will be printed.`);
+  const spent = spools.filter(isSpent).length;
+  if (spent) lines.push(`${plural(spent, "spent spool")} included.`);
+  if (cache.unknown.length) lines.push(`${cache.unknown.length} no longer in the spool list and will be skipped.`);
+  if (status.quota && missing > status.quota.remaining) lines.push("That is more than the requests left this month, so some labels will fail.");
+
+  batch.spools = spools.filter((s) => !cache.unknown.includes(s.short_code));
+  setBatch({ summary: lines.join(" ") });
+  renderBatchStartActions();
+}
+
+function renderBatchStartActions() {
+  const n = batch.spools.length;
+  if (!printer.client) {
+    setBatch({
+      status: "Connect the printer to print.",
+      actions: [
+        closeBatchButton(),
+        actionButton("Connect printer", async () => { await toggleConnection(); renderBatchStartActions(); }, true),
+      ],
+    });
+    return;
+  }
+  setBatch({
+    status: `Printer: ${printer.deviceName || "connected"}.`,
+    actions: [closeBatchButton(), actionButton(`Print ${plural(n, "label")}`, () => runBatch(batch.spools), true)],
+  });
+  if (!n) $("batchActions").lastChild.disabled = true;
+}
+
+async function runBatch(spools) {
+  batch.running = true;
+  batch.cancelled = false;
+  const cancelButton = actionButton("Cancel", () => {
+    batch.cancelled = true;
+    cancelButton.disabled = true;
+    cancelButton.textContent = "Cancelling…";
+  });
+  setBatch({ problems: [], progress: 0, actions: [cancelButton] });
+
+  try {
+    // 1. Download and draw every label before printing, so a missing label
+    //    can't stop the job halfway.
+    const canvases = new Array(spools.length);
+    const problems = [];
+    let prepared = 0;
+    setBatch({ status: `Preparing labels: 0 of ${spools.length}` });
+    await mapLimit(spools, 3, async (s, i) => {
+      if (batch.cancelled) return;
+      try {
+        const canvas = el("canvas");
+        await rasterise(await fetchLabelBlob(s.short_code), canvas);
+        canvases[i] = canvas;
+      } catch (e) {
+        problems.push({ spool: s, message: e.message });
+      }
+      prepared++;
+      setBatch({ status: `Preparing labels: ${prepared} of ${spools.length}`, progress: prepared / spools.length });
+    });
+    loadStatus();
+
+    if (batch.cancelled) {
+      setBatch({ summary: "Cancelled before printing. Nothing was printed.", status: "", progress: null, actions: [closeBatchButton()] });
+      return;
+    }
+
+    let toPrint = spools.map((s, i) => ({ spool: s, canvas: canvases[i] })).filter((p) => p.canvas);
+    if (problems.length) {
+      setBatch({
+        summary: `${plural(problems.length, "label")} could not be prepared. Nothing has been printed yet.`,
+        status: "", progress: null, problems,
+      });
+      if (!toPrint.length) {
+        setBatch({ actions: [closeBatchButton()] });
+        return;
+      }
+      const go = await new Promise((resolve) => setBatch({
+        actions: [
+          actionButton("Cancel", () => resolve(false)),
+          actionButton(`Print the other ${plural(toPrint.length, "label")}`, () => resolve(true), true),
+        ],
+      }));
+      if (!go) {
+        setBatch({ summary: "Cancelled. Nothing was printed.", actions: [closeBatchButton()] });
+        return;
+      }
+      cancelButton.disabled = false;
+      cancelButton.textContent = "Cancel";
+      setBatch({ problems: [], actions: [cancelButton] });
+    }
+
+    // 2. Print them all as one job.
+    const total = toPrint.length;
+    setBatch({ summary: `Printing ${plural(total, "label")}.`, progress: 0 });
+    let current = 0;
+    const describe = (i) => `${toPrint[i].spool.color} · ${toPrint[i].spool.short_code}`;
+    try {
+      const result = await printCanvases(toPrint.map((p) => p.canvas), {
+        onPageStart: (i) => { current = i; setBatch({ status: `Printing ${i + 1} of ${total}: ${describe(i)}` }); },
+        onProgress: (e) => setBatch({ progress: (current + e.pagePrintProgress / 100) / total }),
+        onPageDone: (i) => setBatch({ progress: (i + 1) / total }),
+        isCancelled: () => batch.cancelled,
+      });
+      const done = toPrint.slice(0, result.printed).map((p) => p.spool.short_code);
+      setBatch({
+        summary: result.cancelled
+          ? `Cancelled after ${result.printed} of ${plural(total, "label")}.`
+          : `Printed ${plural(result.printed, "label")}.`,
+        status: "",
+        actions: [
+          actionButton("Deselect printed", () => { setSelected(done, false); $("batch").close(); }),
+          closeBatchButton(),
+        ],
+      });
+    } catch (e) {
+      const printed = e.printed || 0;
+      const done = toPrint.slice(0, printed).map((p) => p.spool.short_code);
+      setBatch({
+        summary: `Printing stopped after ${printed} of ${plural(total, "label")}: ${e.message}`,
+        status: printed < total ? `The next label was ${describe(printed)}.` : "",
+        actions: [
+          ...(printed ? [actionButton("Deselect printed", () => { setSelected(done, false); $("batch").close(); })] : []),
+          closeBatchButton(),
+        ],
+      });
+    }
+  } finally {
+    batch.running = false;
   }
 }
 
@@ -1078,12 +1335,7 @@ async function showPreview(code) {
   $("preview").hidden = false;
 
   try {
-    const r = await fetch(`/api/label/${encodeURIComponent(code)}`);
-    if (!r.ok) {
-      const body = await r.json().catch(() => null);
-      throw new Error(body?.error?.message || `Server returned HTTP ${r.status}.`);
-    }
-    const blob = await r.blob();
+    const blob = await fetchLabelBlob(code);
     if (state.previewCode !== code) return; // another preview was opened meanwhile
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = URL.createObjectURL(blob);
@@ -1126,6 +1378,9 @@ $("collapseAll").addEventListener("click", () => {
 });
 $("pvClose").addEventListener("click", closePreview);
 $("pvPrint").addEventListener("click", printPreviewed);
+$("printBatch").addEventListener("click", openBatch);
+// Esc must not close the batch dialog while it is downloading or printing.
+$("batch").addEventListener("cancel", (e) => { if (batch.running) e.preventDefault(); });
 $("connect").addEventListener("click", toggleConnection);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("settings").open) closePreview(); });
 
