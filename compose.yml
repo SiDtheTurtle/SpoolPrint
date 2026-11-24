@@ -1,0 +1,18 @@
+name: niimbatch
+
+services:
+  niimbatch:
+    image: ghcr.io/sidtheturtle/niimbatch:latest
+    container_name: niimbatch
+    environment:
+      - TZ=Europe/London
+    ports:
+      - "6464:6464"
+    env_file: .env
+    volumes:
+      - data:/data
+    restart: unless-stopped
+
+volumes:
+  data:
+    name: niimbatch_data

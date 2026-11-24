@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NiimBatch</title>
+<style>
+  :root { --ink: #1a1814; --muted: #7a7268; --ok: #2e6b45; --bad: #c0392b; --bg: #fafaf7; }
+  body { font-family: system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; padding: 16px; }
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  .status { color: var(--muted); }
+  .ok { color: var(--ok); }
+  .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<h1>NiimBatch</h1>
+<ul class="status">
+  <li>Server: <span id="server">checking…</span></li>
+  <li>Web Bluetooth: <span id="bt">checking…</span></li>
+  <li>niimbluelib: <span id="lib">checking…</span></li>
+</ul>
+
+<script src="/vendor/niimbluelib.min.js"></script>
+<script>
+  function setStatus(id, ok, text) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = ok ? "ok" : "bad";
+  }
+
+  fetch("/healthz")
+    .then(r => r.json())
+    .then(h => setStatus("server", h.api_key_set, h.api_key_set ? "up, API key set" : "up, API key NOT set"))
+    .catch(() => setStatus("server", false, "unreachable"));
+
+  const btOk = "bluetooth" in navigator && window.isSecureContext;
+  setStatus("bt", btOk, btOk ? "available" : "not available (needs Chrome/Edge over HTTPS or localhost)");
+
+  const libOk = typeof niimbluelib !== "undefined" && niimbluelib.printTaskNames.includes("B1");
+  setStatus("lib", libOk, libOk ? "loaded, B1 task present" : "failed to load");
+</script>
+</body>
+</html>
