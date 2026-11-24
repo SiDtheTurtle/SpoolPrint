@@ -106,8 +106,8 @@ typing.
 
 ## Credits
 
-- [niimbluelib](https://github.com/MultiMote/niimbluelib) (MIT) talks to the printer. A copy is included in
-  `static/vendor`.
+- [niimbluelib](https://github.com/MultiMote/niimbluelib) (MIT) talks to the printer. The Docker build
+  downloads a pinned version from npm and checks it against a fixed hash.
 - Labels are made by [3D Filament Profiles](https://3dfilamentprofiles.com) through its API.
 - [segno](https://github.com/heuer/segno) draws the QR codes on filament labels.
 
