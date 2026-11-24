@@ -4,41 +4,441 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NiimBatch</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='8' y='22' width='84' height='56' rx='8' fill='%231a1814'/><rect x='18' y='32' width='28' height='36' rx='3' fill='%23fafaf7'/></svg>">
 <style>
-  :root { --ink: #1a1814; --muted: #7a7268; --ok: #2e6b45; --bad: #c0392b; --bg: #fafaf7; }
-  body { font-family: system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; padding: 16px; }
-  h1 { font-size: 1.4rem; margin: 0 0 12px; }
-  .status { color: var(--muted); }
-  .ok { color: var(--ok); }
-  .bad { color: var(--bad); }
+  :root {
+    --bg: #fafaf7; --surface: #ffffff; --ink: #1a1814; --muted: #7a7268; --line: #e4dfd5;
+    --accent: #1a4a7a; --accent-soft: #e6eef6; --ok: #2e6b45; --warn: #a86a00; --bad: #c0392b;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161513; --surface: #1f1e1b; --ink: #ece8e0; --muted: #9a9286; --line: #34322d;
+      --accent: #8ab4e0; --accent-soft: #23303d; --ok: #6cbf8a; --warn: #e0a84a; --bad: #e6786b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.4 system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; }
+  button, input, select { font: inherit; color: inherit; }
+  button {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 10px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=search], select {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+  }
+  input[type=checkbox] { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface);
+  }
+  h1 { font-size: 1.25rem; margin: 0; margin-right: auto; }
+  .meta { color: var(--muted); font-size: .85rem; }
+  .meta.low { color: var(--warn); }
+  .meta.bad { color: var(--bad); }
+
+  .banner {
+    margin: 12px 16px 0; padding: 8px 12px; border-radius: 6px;
+    background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad);
+  }
+
+  .toolbar, .selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 16px 0; }
+  .toolbar input[type=search] { flex: 1 1 260px; min-width: 0; }
+  .toolbar label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .selbar { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  #selCount { margin-right: 4px; }
+  .spacer { margin-left: auto; }
+
+  main { display: flex; align-items: flex-start; }
+  #tree { flex: 1; min-width: 0; padding: 8px 16px 40px; }
+  .empty-state { color: var(--muted); padding: 24px 0; }
+
+  details.filament { border-bottom: 1px solid var(--line); }
+  details.filament > summary {
+    display: flex; align-items: center; gap: 10px; padding: 8px 4px; cursor: pointer; list-style: none;
+  }
+  details.filament > summary::-webkit-details-marker { display: none; }
+  details.filament > summary::before {
+    content: "▸"; color: var(--muted); width: 10px; transition: transform .15s;
+  }
+  details.filament[open] > summary::before { transform: rotate(90deg); }
+  .swatch {
+    width: 22px; height: 22px; border-radius: 50%; flex: none;
+    border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  }
+  .fname { min-width: 0; }
+  .fname small { color: var(--muted); }
+  .count { margin-left: auto; color: var(--muted); font-size: .85rem; white-space: nowrap; }
+
+  .spool {
+    display: grid; grid-template-columns: 17px 7.5em 1fr 5em auto; align-items: center; gap: 10px;
+    padding: 5px 4px 5px 56px; cursor: pointer; border-radius: 6px;
+  }
+  .spool:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+  .spool.previewing { background: var(--accent-soft); }
+  .code { font-family: var(--mono); font-size: .9rem; }
+  .loc { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .grams { text-align: right; font-variant-numeric: tabular-nums; }
+  .grams.zero { color: var(--muted); }
+  .spool button { padding: 2px 8px; font-size: .85rem; }
+
+  #preview {
+    position: sticky; top: 12px; width: 440px; flex: none; margin: 12px 16px 0 0; padding: 14px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  }
+  #preview h2 { font-size: 1rem; margin: 0 0 2px; font-family: var(--mono); }
+  #preview .sub { color: var(--muted); font-size: .85rem; margin-bottom: 10px; }
+  .label-box {
+    background: #fff; border: 1px solid var(--line); border-radius: 4px; aspect-ratio: 4 / 3;
+    display: grid; place-items: center; color: #7a7268; overflow: hidden;
+  }
+  .label-box img { width: 100%; height: 100%; display: block; }
+  .label-box.error { color: var(--bad); padding: 12px; text-align: center; }
+  .preview-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .preview-actions a { color: var(--accent); margin-right: auto; }
+
+  @media (max-width: 900px) {
+    #preview {
+      position: fixed; top: auto; left: 0; right: 0; bottom: 0; width: auto; margin: 0;
+      border-radius: 12px 12px 0 0; box-shadow: 0 -4px 24px rgba(0,0,0,.2); z-index: 10;
+    }
+    .label-box { max-width: 400px; margin: 0 auto; }
+  }
+  @media (max-width: 560px) {
+    .spool { grid-template-columns: 17px 7em 1fr auto; padding-left: 28px; }
+    .spool .loc { display: none; }
+  }
 </style>
 </head>
 <body>
-<h1>NiimBatch</h1>
-<ul class="status">
-  <li>Server: <span id="server">checking…</span></li>
-  <li>Web Bluetooth: <span id="bt">checking…</span></li>
-  <li>niimbluelib: <span id="lib">checking…</span></li>
-</ul>
+<header>
+  <h1>NiimBatch</h1>
+  <span class="meta" id="quota"></span>
+  <span class="meta" id="fetched"></span>
+  <button id="refresh" title="Fetch the spool list again (1 API request)">Refresh list</button>
+</header>
+
+<div id="error" class="banner" role="alert" hidden></div>
+
+<div class="toolbar">
+  <input id="search" type="search" placeholder="Search brand, material, colour, location or code" autocomplete="off">
+  <select id="location" aria-label="Location"><option value="">All locations</option></select>
+  <label><input type="checkbox" id="hideEmpty" checked> Hide empty</label>
+</div>
+
+<div class="selbar">
+  <strong id="selCount">0 selected</strong>
+  <button id="selectShown">Select all shown</button>
+  <button id="clearSel">Clear</button>
+  <span class="spacer"></span>
+  <button id="expandAll">Expand all</button>
+  <button id="collapseAll">Collapse all</button>
+</div>
+
+<main>
+  <div id="tree"><p class="empty-state">Loading spools…</p></div>
+  <aside id="preview" hidden>
+    <h2 id="pvCode"></h2>
+    <div class="sub" id="pvSub"></div>
+    <div class="label-box" id="pvBox"></div>
+    <div class="preview-actions">
+      <a id="pvLink" target="_blank" rel="noopener">Open spool page</a>
+      <button id="pvClose">Close</button>
+    </div>
+  </aside>
+</main>
 
 <script src="/vendor/niimbluelib.min.js"></script>
 <script>
-  function setStatus(id, ok, text) {
-    const el = document.getElementById(id);
-    el.textContent = text;
-    el.className = ok ? "ok" : "bad";
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  filaments: [],          // from /api/spools, each with .el, .cb, .countEl and spools with .el, .cb
+  byCode: new Map(),      // short_code -> { spool, filament }
+  selected: new Set(),    // short codes, kept across filtering and refreshes
+  previewCode: null,
+  previewUrl: null,       // object URL of the label being previewed
+};
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k === "style") node.style.cssText = v;
+    else if (k in node) node[k] = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) node.append(c);
+  return node;
+}
+
+async function apiJson(path) {
+  const r = await fetch(path);
+  const body = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(body?.error?.message || `Server returned HTTP ${r.status}.`);
+  return body;
+}
+
+function showError(message) {
+  $("error").textContent = message || "";
+  $("error").hidden = !message;
+}
+
+function formatTime(iso) {
+  if (!iso) return "never";
+  return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function filamentName(f) {
+  return [f.material, f.material_type].filter(Boolean).join(" ");
+}
+
+// ── status ───────────────────────────────────────────────────────────────────
+
+async function loadStatus() {
+  try {
+    const s = await apiJson("/api/status");
+    const q = $("quota");
+    if (!s.api_key_set) {
+      q.textContent = "API key not set";
+      q.className = "meta bad";
+    } else if (s.quota) {
+      q.textContent = `${s.quota.remaining} of ${s.quota.limit} API requests left`;
+      q.className = "meta" + (s.quota.remaining < 100 ? " low" : "");
+    } else {
+      q.textContent = "";
+    }
+    $("fetched").textContent = `List fetched ${formatTime(s.spools_fetched_at)}`;
+  } catch {
+    // The status line is informational; the spool load reports real errors.
+  }
+}
+
+// ── spools ───────────────────────────────────────────────────────────────────
+
+async function loadSpools(refresh = false) {
+  $("refresh").disabled = true;
+  try {
+    const data = await apiJson("/api/spools" + (refresh ? "?refresh=true" : ""));
+    state.filaments = data.filaments;
+    showError("");
+    renderTree();
+  } catch (e) {
+    showError(e.message);
+    if (!state.filaments.length) $("tree").replaceChildren(el("p", { class: "empty-state" }, "No spools loaded."));
+  } finally {
+    $("refresh").disabled = false;
+    loadStatus();
+  }
+}
+
+function renderTree() {
+  state.byCode.clear();
+  const openIds = new Set(
+    [...document.querySelectorAll("details.filament[open]")].map((d) => d.dataset.fid)
+  );
+
+  const frag = document.createDocumentFragment();
+  for (const f of state.filaments) {
+    f.cb = el("input", { type: "checkbox", title: "Select the shown spools of this filament" });
+    f.cb.addEventListener("click", (e) => e.stopPropagation());
+    f.cb.addEventListener("change", () => toggleFilament(f, f.cb.checked));
+    f.countEl = el("span", { class: "count" });
+    f.searchText = [f.brand, f.material, f.material_type, f.color].join(" ").toLowerCase();
+
+    const summary = el("summary", {},
+      f.cb,
+      el("span", { class: "swatch", style: `background:${f.rgb || "transparent"}` }),
+      el("span", { class: "fname" }, el("strong", {}, f.color || "Unknown colour"), " ",
+        el("small", {}, `${f.brand} · ${filamentName(f)}`)),
+      f.countEl,
+    );
+    f.el = el("details", { class: "filament" }, summary);
+    f.el.dataset.fid = String(f.filament_id);
+    if (openIds.has(f.el.dataset.fid)) f.el.open = true;
+
+    for (const s of f.spools) {
+      state.byCode.set(s.short_code, { spool: s, filament: f });
+      s.searchText = [s.short_code, s.location].join(" ").toLowerCase();
+      s.cb = el("input", { type: "checkbox", checked: state.selected.has(s.short_code) });
+      s.cb.addEventListener("click", (e) => e.stopPropagation());
+      s.cb.addEventListener("change", () => setSelected(s.short_code, s.cb.checked));
+      const previewBtn = el("button", { type: "button", textContent: "Preview" });
+      previewBtn.addEventListener("click", (e) => { e.stopPropagation(); showPreview(s.short_code); });
+      s.el = el("div", { class: "spool" },
+        s.cb,
+        el("span", { class: "code" }, s.short_code),
+        el("span", { class: "loc", title: s.location || "" }, s.location || "—"),
+        el("span", { class: "grams" + (s.remaining_grams ? "" : " zero") }, `${s.remaining_grams ?? "?"} g`),
+        previewBtn,
+      );
+      s.el.addEventListener("click", () => { s.cb.checked = !s.cb.checked; setSelected(s.short_code, s.cb.checked); });
+      f.el.append(s.el);
+    }
+    frag.append(f.el);
+  }
+  $("tree").replaceChildren(frag);
+
+  // Drop selections for spools that no longer exist.
+  for (const code of state.selected) if (!state.byCode.has(code)) state.selected.delete(code);
+
+  renderLocations();
+  applyFilter();
+}
+
+function renderLocations() {
+  const select = $("location");
+  const current = select.value;
+  const counts = new Map();
+  for (const f of state.filaments) for (const s of f.spools) {
+    const loc = s.location || "";
+    counts.set(loc, (counts.get(loc) || 0) + 1);
+  }
+  const options = [...counts.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  select.replaceChildren(
+    el("option", { value: "" }, "All locations"),
+    ...options.map((loc) => el("option", { value: loc }, `${loc || "(none)"} (${counts.get(loc)})`)),
+  );
+  select.value = counts.has(current) ? current : "";
+}
+
+// ── filtering & selection ────────────────────────────────────────────────────
+
+function spoolVisible(s, f, query, location, hideEmpty) {
+  if (hideEmpty && !s.remaining_grams) return false;
+  if (location && (s.location || "") !== location) return false;
+  return !query || f.searchText.includes(query) || s.searchText.includes(query);
+}
+
+function applyFilter() {
+  const query = $("search").value.trim().toLowerCase();
+  const location = $("location").value;
+  const hideEmpty = $("hideEmpty").checked;
+  let shownFilaments = 0;
+
+  for (const f of state.filaments) {
+    f.visibleSpools = [];
+    for (const s of f.spools) {
+      const visible = spoolVisible(s, f, query, location, hideEmpty);
+      s.el.hidden = !visible;
+      if (visible) f.visibleSpools.push(s);
+    }
+    f.el.hidden = f.visibleSpools.length === 0;
+    if (!f.el.hidden) shownFilaments++;
+    const n = f.visibleSpools.length, total = f.spools.length;
+    f.countEl.textContent = n === total ? `${total} spool${total === 1 ? "" : "s"}` : `${n} of ${total} spools`;
+    // Searching or filtering by location opens matches so the spools are visible.
+    if ((query || location) && !f.el.hidden) f.el.open = true;
   }
 
-  fetch("/healthz")
-    .then(r => r.json())
-    .then(h => setStatus("server", h.api_key_set, h.api_key_set ? "up, API key set" : "up, API key NOT set"))
-    .catch(() => setStatus("server", false, "unreachable"));
+  if (!shownFilaments) {
+    if (!$("tree").querySelector(".empty-state")) {
+      $("tree").append(el("p", { class: "empty-state" }, "No spools match."));
+    }
+  } else {
+    $("tree").querySelector(".empty-state")?.remove();
+  }
+  updateChecks();
+}
 
-  const btOk = "bluetooth" in navigator && window.isSecureContext;
-  setStatus("bt", btOk, btOk ? "available" : "not available (needs Chrome/Edge over HTTPS or localhost)");
+function setSelected(code, on) {
+  if (on) state.selected.add(code); else state.selected.delete(code);
+  updateChecks();
+}
 
-  const libOk = typeof niimbluelib !== "undefined" && niimbluelib.printTaskNames.includes("B1");
-  setStatus("lib", libOk, libOk ? "loaded, B1 task present" : "failed to load");
+function toggleFilament(f, on) {
+  for (const s of f.visibleSpools) setSelectedQuiet(s, on);
+  updateChecks();
+}
+
+function setSelectedQuiet(s, on) {
+  if (on) state.selected.add(s.short_code); else state.selected.delete(s.short_code);
+  s.cb.checked = on;
+}
+
+function updateChecks() {
+  for (const f of state.filaments) {
+    const visible = f.visibleSpools || [];
+    const selVisible = visible.filter((s) => state.selected.has(s.short_code)).length;
+    const selAny = f.spools.some((s) => state.selected.has(s.short_code));
+    f.cb.checked = visible.length > 0 && selVisible === visible.length;
+    f.cb.indeterminate = !f.cb.checked && selAny;
+    for (const s of f.spools) s.cb.checked = state.selected.has(s.short_code);
+  }
+  const n = state.selected.size;
+  $("selCount").textContent = `${n} selected`;
+  $("clearSel").disabled = n === 0;
+}
+
+// ── preview ──────────────────────────────────────────────────────────────────
+
+async function showPreview(code) {
+  const entry = state.byCode.get(code);
+  if (!entry) return;
+  const { spool: s, filament: f } = entry;
+
+  document.querySelector(".spool.previewing")?.classList.remove("previewing");
+  s.el.classList.add("previewing");
+  state.previewCode = code;
+
+  $("pvCode").textContent = code;
+  $("pvSub").textContent = `${f.brand} ${filamentName(f)} · ${f.color} · ${s.location || "no location"} · ${s.remaining_grams} g`;
+  $("pvLink").href = s.spool_url;
+  const box = $("pvBox");
+  box.className = "label-box";
+  box.replaceChildren("Loading label…");
+  $("preview").hidden = false;
+
+  try {
+    const r = await fetch(`/api/label/${encodeURIComponent(code)}`);
+    if (!r.ok) {
+      const body = await r.json().catch(() => null);
+      throw new Error(body?.error?.message || `Server returned HTTP ${r.status}.`);
+    }
+    const blob = await r.blob();
+    if (state.previewCode !== code) return; // another preview was opened meanwhile
+    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    state.previewUrl = URL.createObjectURL(blob);
+    box.replaceChildren(el("img", { src: state.previewUrl, alt: `Label for spool ${code}` }));
+  } catch (e) {
+    if (state.previewCode !== code) return;
+    box.className = "label-box error";
+    box.replaceChildren(e.message);
+  } finally {
+    loadStatus(); // a first-time label fetch uses one API request
+  }
+}
+
+function closePreview() {
+  $("preview").hidden = true;
+  document.querySelector(".spool.previewing")?.classList.remove("previewing");
+  state.previewCode = null;
+}
+
+// ── wiring ───────────────────────────────────────────────────────────────────
+
+$("refresh").addEventListener("click", () => loadSpools(true));
+$("search").addEventListener("input", applyFilter);
+$("location").addEventListener("change", applyFilter);
+$("hideEmpty").addEventListener("change", applyFilter);
+$("selectShown").addEventListener("click", () => {
+  for (const f of state.filaments) for (const s of f.visibleSpools || []) setSelectedQuiet(s, true);
+  updateChecks();
+});
+$("clearSel").addEventListener("click", () => { state.selected.clear(); updateChecks(); });
+$("expandAll").addEventListener("click", () => state.filaments.forEach((f) => { if (!f.el.hidden) f.el.open = true; }));
+$("collapseAll").addEventListener("click", () => state.filaments.forEach((f) => { f.el.open = false; }));
+$("pvClose").addEventListener("click", closePreview);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePreview(); });
+
+loadSpools();
 </script>
 </body>
 </html>
