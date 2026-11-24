@@ -1,9 +1,9 @@
-name: niimbatch
+name: spoolprint
 
 services:
-  niimbatch:
-    image: ghcr.io/sidtheturtle/niimbatch:latest
-    container_name: niimbatch
+  spoolprint:
+    image: ghcr.io/sidtheturtle/spoolprint:latest
+    container_name: spoolprint
     environment:
       - TZ=Europe/London
     ports:
@@ -15,4 +15,4 @@ services:
 
 volumes:
   data:
-    name: niimbatch_data
+    name: spoolprint_data

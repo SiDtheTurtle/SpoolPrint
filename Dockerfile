@@ -10,8 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY static/ static/
 
-RUN useradd --system --uid 1000 niimbatch && mkdir -p /data && chown niimbatch /data
-USER niimbatch
+RUN useradd --system --uid 1000 spoolprint && mkdir -p /data && chown spoolprint /data
+USER spoolprint
 
 EXPOSE 6464
 

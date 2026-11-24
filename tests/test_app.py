@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-import app as niimbatch
+import app as spoolprint
 
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="30mm"/>'
 
@@ -55,15 +55,15 @@ class FakeApi:
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     fake = FakeApi()
-    monkeypatch.setattr(niimbatch, "API_KEY", "3dfp_test")
-    monkeypatch.setattr(niimbatch, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(niimbatch, "UPSTREAM_TRANSPORT", httpx.MockTransport(fake.handler))
+    monkeypatch.setattr(spoolprint, "API_KEY", "3dfp_test")
+    monkeypatch.setattr(spoolprint, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(spoolprint, "UPSTREAM_TRANSPORT", httpx.MockTransport(fake.handler))
     return fake
 
 
 @pytest.fixture
 def client(api):
-    with TestClient(niimbatch.app) as c:
+    with TestClient(spoolprint.app) as c:
         yield c
 
 
@@ -78,7 +78,7 @@ def test_spools_are_a_flat_list_with_filament_and_purchase_date(client, api):
     assert first["purchase_date"] == "2026-09-30"
     assert "purchase_price" not in first
     assert body["spools"][1]["purchase_date"] is None
-    assert set(first) == {*niimbatch.SPOOL_FIELDS, "filament_id", *niimbatch.FILAMENT_FIELDS, "purchase_date"}
+    assert set(first) == {*spoolprint.SPOOL_FIELDS, "filament_id", *spoolprint.FILAMENT_FIELDS, "purchase_date"}
 
 
 def test_spool_list_is_cached_until_refresh(client, api):
@@ -142,7 +142,7 @@ def test_upstream_errors_pass_through_with_friendly_message(client, api, status,
     api.fail = (status, {"error": {"code": code, "message": "raw"}})
     r = client.get("/api/spools")
     assert r.status_code == status
-    assert r.json()["error"] == {"code": code, "message": niimbatch.FRIENDLY_ERRORS[code]}
+    assert r.json()["error"] == {"code": code, "message": spoolprint.FRIENDLY_ERRORS[code]}
 
 
 def test_upstream_server_error_becomes_502(client, api):
@@ -155,14 +155,14 @@ def test_upstream_server_error_becomes_502(client, api):
 def test_network_failure_becomes_502(client, api, monkeypatch):
     def boom(request):
         raise httpx.ConnectError("down")
-    monkeypatch.setattr(niimbatch, "UPSTREAM_TRANSPORT", httpx.MockTransport(boom))
+    monkeypatch.setattr(spoolprint, "UPSTREAM_TRANSPORT", httpx.MockTransport(boom))
     r = client.get("/api/spools")
     assert r.status_code == 502
     assert r.json()["error"]["code"] == "upstream_unreachable"
 
 
 def test_missing_key_never_calls_api(client, api, monkeypatch):
-    monkeypatch.setattr(niimbatch, "API_KEY", "")
+    monkeypatch.setattr(spoolprint, "API_KEY", "")
     r = client.get("/api/spools")
     assert r.status_code == 503
     assert r.json()["error"]["code"] == "no_api_key"
@@ -192,7 +192,7 @@ def label_calls(api):
 
 def test_settings_default_and_options(client, api):
     body = client.get("/api/settings").json()
-    assert body["label"] == niimbatch.DEFAULT_LABEL_SETTINGS
+    assert body["label"] == spoolprint.DEFAULT_LABEL_SETTINGS
     assert body["options"]["slots"]["dryingInfo"] == "Drying Info (Time & Temp)"
     assert api.calls == []
 
@@ -218,7 +218,7 @@ def test_changing_settings_refetches_and_switching_back_is_free(client, api):
     client.get("/api/label/AAA111")
     client.put("/api/settings", json={"label": CUSTOM})
     client.get("/api/label/AAA111")
-    client.put("/api/settings", json={"label": niimbatch.DEFAULT_LABEL_SETTINGS})
+    client.put("/api/settings", json={"label": spoolprint.DEFAULT_LABEL_SETTINGS})
     client.get("/api/label/AAA111")
     assert len(label_calls(api)) == 2
 
@@ -236,13 +236,13 @@ def test_invalid_settings_rejected_and_not_saved(client, api, bad):
     r = client.put("/api/settings", json={"label": bad})
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "invalid_settings"
-    assert client.get("/api/settings").json()["label"] == niimbatch.DEFAULT_LABEL_SETTINGS
+    assert client.get("/api/settings").json()["label"] == spoolprint.DEFAULT_LABEL_SETTINGS
 
 
 def test_legacy_flat_label_cache_removed_on_start(api, tmp_path):
     (tmp_path / "labels").mkdir()
     (tmp_path / "labels" / "AAA111-abc.svg").write_bytes(SVG)
-    with TestClient(niimbatch.app):
+    with TestClient(spoolprint.app):
         pass
     assert not (tmp_path / "labels" / "AAA111-abc.svg").exists()
 
@@ -254,7 +254,7 @@ B1 = {"density": 4, "direction": "top", "flip": True, "offset_x": -0.6, "offset_
 
 def test_unknown_printer_gets_defaults_unsaved(client, api):
     body = client.get("/api/printers/B1-H1234").json()
-    assert body == {"name": "B1-H1234", "saved": False, "settings": niimbatch.DEFAULT_PRINTER_SETTINGS}
+    assert body == {"name": "B1-H1234", "saved": False, "settings": spoolprint.DEFAULT_PRINTER_SETTINGS}
 
 
 def test_printer_settings_saved_per_printer_and_snapped_to_dots(client, api):

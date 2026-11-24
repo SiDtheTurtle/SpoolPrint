@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NiimBatch</title>
+<title>SpoolPrint</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='8' y='22' width='84' height='56' rx='8' fill='%231a1814'/><rect x='18' y='32' width='28' height='36' rx='3' fill='%23fafaf7'/></svg>">
 <style>
   :root {
@@ -191,7 +191,7 @@
 </head>
 <body>
 <header>
-  <h1>NiimBatch</h1>
+  <h1>SpoolPrint</h1>
   <span class="meta" id="quota"></span>
   <span class="meta" id="fetched"></span>
   <button id="refresh" title="Fetch the spool list again (1 API request)">Refresh list</button>
@@ -440,7 +440,16 @@ async function loadStatus() {
 
 // ── view preferences (this browser only) ─────────────────────────────────────
 
-const VIEW_KEY = "niimbatch.view";
+// The app was called NiimBatch; carry this browser's saved keys over once.
+for (const key of ["view", "lastPrinter", "print"]) {
+  try {
+    const old = localStorage.getItem(`niimbatch.${key}`);
+    if (old !== null && localStorage.getItem(`spoolprint.${key}`) === null) localStorage.setItem(`spoolprint.${key}`, old);
+    localStorage.removeItem(`niimbatch.${key}`);
+  } catch { /* storage unavailable */ }
+}
+
+const VIEW_KEY = "spoolprint.view";
 const view = { sort: "purchase_date", dir: -1, group: "none", hideEmpty: true, ...readLocal(VIEW_KEY, {}) };
 
 function saveView() {
@@ -770,7 +779,7 @@ function paintCalibration(ctx) {
 
   ctx.textAlign = "center";
   ctx.font = "bold 18px sans-serif";
-  ctx.fillText("NiimBatch calibration", W / 2, 52);
+  ctx.fillText("SpoolPrint calibration", W / 2, 52);
   ctx.font = "bold 15px sans-serif";
   ctx.fillText(`Offset X ${formatMm(printerSettings.offset_x)} mm   Y ${formatMm(printerSettings.offset_y)} mm`, W / 2, 182);
   ctx.fillText(`Density ${printerSettings.density}${printerSettings.flip ? " · rotated 180°" : ""}`, W / 2, 202);
@@ -788,8 +797,8 @@ function renderCalibration() {
 // ── printer settings (server, one set per printer) ───────────────────────────
 
 const DEFAULT_PRINTER_SETTINGS = { density: 3, direction: "top", flip: false, offset_x: 0, offset_y: 0 };
-const LAST_PRINTER_KEY = "niimbatch.lastPrinter";
-const LEGACY_PRINT_KEY = "niimbatch.print"; // printer settings were kept in the browser before
+const LAST_PRINTER_KEY = "spoolprint.lastPrinter";
+const LEGACY_PRINT_KEY = "spoolprint.print"; // printer settings were kept in the browser before
 let printerSettings = { ...DEFAULT_PRINTER_SETTINGS };
 let printerProfile = readLocal(LAST_PRINTER_KEY, "default");
 let printerProfileSaved = false;

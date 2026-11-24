@@ -1,4 +1,4 @@
-"""NiimBatch: batch-print 3dfilamentprofiles.com spool labels to a Niimbot B1."""
+"""SpoolPrint: print 3dfilamentprofiles.com spool and filament labels from the browser."""
 
 import asyncio
 import hashlib
@@ -93,7 +93,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="NiimBatch", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="SpoolPrint", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
 @app.exception_handler(ApiError)
