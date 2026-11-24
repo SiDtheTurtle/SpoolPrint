@@ -31,6 +31,7 @@ class FakeApi:
         self.calls: list[httpx.Request] = []
         self.fail: tuple[int, dict | bytes] | None = None
         self.remaining = 1000
+        self.label_svg = SVG
 
     def paths(self):
         return [r.url.path for r in self.calls]
@@ -48,7 +49,7 @@ class FakeApi:
         if path == "/api/v1/my/spools":
             return httpx.Response(200, json={"data": self.spools, "as_of": "x"}, headers=headers)
         if path.startswith("/api/v1/my/spools/") and path.endswith("/label"):
-            return httpx.Response(200, content=SVG, headers={**headers, "Content-Type": "image/svg+xml"})
+            return httpx.Response(200, content=self.label_svg, headers={**headers, "Content-Type": "image/svg+xml"})
         return httpx.Response(404, json={"error": {"code": "not_found", "message": "nope"}}, headers=headers)
 
 
@@ -296,7 +297,8 @@ def test_cache_status_reports_cached_missing_and_unknown(client, api):
     client.get("/api/label/AAA111")
     calls_before = len(api.calls)
     r = client.post("/api/labels/cache-status", json={"codes": ["AAA111", "BBB222", "NOPE99"]})
-    assert r.json() == {"cached": ["AAA111"], "missing": ["BBB222"], "unknown": ["NOPE99"]}
+    assert r.json() == {"cached": ["AAA111"], "missing": ["BBB222"], "unknown": ["NOPE99"],
+                        "filaments": {"cached": [], "missing": [], "unknown": []}}
     assert len(api.calls) == calls_before  # checking costs nothing
 
 
@@ -307,6 +309,122 @@ def test_cache_status_follows_label_settings(client, api):
     assert r.json()["missing"] == ["AAA111"]
 
 
-@pytest.mark.parametrize("bad", [{}, {"codes": "AAA111"}, {"codes": [1, 2]}, []])
+@pytest.mark.parametrize("bad", [{}, {"codes": "AAA111"}, {"codes": [1, 2]}, {"filaments": ["x"]}, []])
 def test_cache_status_rejects_bad_body(client, api, bad):
     assert client.post("/api/labels/cache-status", json=bad).status_code == 400
+
+
+# ── filament labels ──────────────────────────────────────────────────────────
+
+import re
+from pathlib import Path
+
+import zxingcpp
+from PIL import Image
+
+FIXTURES = Path(__file__).parent / "fixtures"
+SPOOL_LABEL = (FIXTURES / "spool_label.svg").read_bytes()        # QR with circle corner markers
+FILAMENT_LABEL = (FIXTURES / "filament_label.svg").read_bytes()  # a real filament label from the site
+
+
+def decode_qr(svg: bytes) -> str | None:
+    """Rebuild the QR block's module grid from its path and scan it."""
+    block = re.search(r'<svg x="250"[^>]*viewBox="0 0 (\d+) \1"[^>]*>(.*?)</svg>', svg.decode(), re.S)
+    n = int(block.group(1))
+    d = re.search(r' d="([^"]+)"', block.group(2)).group(1)
+    scale, quiet = 8, 4
+    img = Image.new("L", ((n + 2 * quiet) * scale,) * 2, 255)
+    for x, y, w in re.findall(r"M(\d+) (\d+)\.5h(\d+)", d):
+        x, y, w = int(x), int(y), int(w)
+        img.paste(0, ((x + quiet) * scale, (y + quiet) * scale, (x + w + quiet) * scale, (y + quiet + 1) * scale))
+    found = zxingcpp.read_barcodes(img)
+    return found[0].text if found else None
+
+
+def filament_label_calls(api):
+    return [c for c in api.calls if c.url.path.endswith("/label")]
+
+
+def test_site_filament_labels_point_at_spooldb():
+    # The fixture is the site's own filament label for filament 129.
+    assert decode_qr(FILAMENT_LABEL) == "https://spooldb.com/f/129"
+
+
+def test_filament_label_swaps_qr_and_keeps_layout(client, api):
+    api.label_svg = SPOOL_LABEL
+    r = client.get("/api/filament-label/101")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/svg+xml"
+    svg = r.content
+    assert decode_qr(svg) == "https://spooldb.com/f/101"
+    assert b"<circle" not in svg                       # spool-style corner markers gone
+    assert b">PLA Basic</text>" in svg                 # rest of the label untouched
+    assert svg.count(b'<svg x="250" y="150"') == 1
+    call = filament_label_calls(api)[0]
+    assert call.url.path == "/api/v1/my/spools/AAA111/label"  # lowest code of filament 101
+    assert dict(call.url.params) == {
+        "format": "svg", "size": "1", "slots": "nozzleTemp,bedTemp,none,none",
+        "show_rgb": "false", "rgb_swatch": "false", "qr": "detail",
+    }
+
+
+def test_filament_label_is_cached_and_follows_its_settings(client, api):
+    api.label_svg = SPOOL_LABEL
+    client.get("/api/filament-label/101")
+    client.get("/api/filament-label/101")
+    assert len(filament_label_calls(api)) == 1
+    client.put("/api/settings", json={"filament_label": {
+        "slots": ["nozzleTemp", "bedTemp", "dryingInfo", "none"], "show_rgb": True, "rgb_swatch": True, "rgb_field": ""}})
+    client.get("/api/filament-label/101")
+    assert len(filament_label_calls(api)) == 2
+    # Spool label settings are separate, so the spool label cache is unaffected.
+    client.get("/api/label/AAA111")
+    client.get("/api/label/AAA111")
+    assert len(filament_label_calls(api)) == 3
+
+
+def test_filament_label_prefers_spool_without_overrides(client, api):
+    api.label_svg = SPOOL_LABEL
+    api.spools[1]["spool_properties"] = {"preferred_nozzle_temp": 250}  # AAA111
+    client.get("/api/spools?refresh=true")
+    client.get("/api/filament-label/101")
+    assert filament_label_calls(api)[0].url.path == "/api/v1/my/spools/BBB222/label"
+
+
+def test_unknown_filament_does_not_call_label_api(client, api):
+    r = client.get("/api/filament-label/999")
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "unknown_filament"
+    assert filament_label_calls(api) == []
+
+
+def test_changed_label_layout_is_refused_and_not_cached(client, api):
+    api.label_svg = SVG  # no QR block where we expect one
+    r = client.get("/api/filament-label/101")
+    assert r.status_code == 502
+    assert r.json()["error"]["code"] == "label_layout_changed"
+    client.get("/api/filament-label/101")
+    assert len(filament_label_calls(api)) == 2
+
+
+@pytest.mark.parametrize("bad", [
+    {"slots": ["nozzleTemp", "bedTemp", "location", "none"], "show_rgb": False, "rgb_swatch": False, "rgb_field": ""},
+    {"slots": ["nozzleTemp", "bedTemp", "none", "none"], "show_rgb": True, "rgb_swatch": False, "rgb_field": "shortCode"},
+])
+def test_filament_label_settings_reject_spool_only_values(client, api, bad):
+    r = client.put("/api/settings", json={"label": CUSTOM, "filament_label": bad})
+    assert r.status_code == 400
+    # Nothing is saved when any part is invalid.
+    assert client.get("/api/settings").json()["label"] == spoolprint.DEFAULT_LABEL_SETTINGS
+
+
+def test_settings_put_needs_a_section(client, api):
+    assert client.put("/api/settings", json={}).status_code == 400
+
+
+def test_cache_status_covers_filaments(client, api):
+    api.label_svg = SPOOL_LABEL
+    client.get("/api/filament-label/101")
+    r = client.post("/api/labels/cache-status", json={"codes": ["CCC333"], "filaments": [101, 202, 999]})
+    assert r.json() == {"cached": [], "missing": ["CCC333"], "unknown": [],
+                        "filaments": {"cached": [101], "missing": [202], "unknown": [999]}}

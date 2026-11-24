@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import segno
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -51,6 +52,17 @@ SLOT_OPTIONS = {
     "none": "(empty)",
 }
 QR_OPTIONS = {"detail": "Spool page", "edit": "Spool edit form"}
+# Slots that print something about one particular spool, so not on filament labels.
+SPOOL_ONLY_SLOTS = {"last_dried", "location", "purchaseDate", "purchasePrice", "purchaseNotes", "rfidTag", "shortCode"}
+FILAMENT_SLOT_OPTIONS = {k: v for k, v in SLOT_OPTIONS.items() if k not in SPOOL_ONLY_SLOTS}
+# Matches the site's own filament label: temperatures, two blank rows, no colour code.
+DEFAULT_FILAMENT_LABEL_SETTINGS = {
+    "slots": ["nozzleTemp", "bedTemp", "none", "none"],
+    "show_rgb": False,
+    "rgb_swatch": False,
+    "rgb_field": "",
+}
+FILAMENT_URL = "https://spooldb.com/f/{id}"  # what the site's filament labels encode
 DEFAULT_LABEL_SETTINGS = {
     "slots": ["nozzleTemp", "bedTemp", "flowRatio", "tdValue"],
     "show_rgb": True,
@@ -195,25 +207,30 @@ async def get_spools(refresh: bool = False):
 
 # ── label settings ────────────────────────────────────────────────────────────
 
-def validate_label_settings(s: object) -> dict:
-    """Return clean settings, or raise ApiError(400) naming the bad field."""
+def validate_label_settings(s: object, filament: bool = False) -> dict:
+    """Return clean settings, or raise ApiError(400) naming the bad field.
+
+    Filament labels may only use slots that make sense without a spool.
+    """
     def bad(message: str):
         raise ApiError(400, "invalid_settings", message)
 
+    allowed = FILAMENT_SLOT_OPTIONS if filament else SLOT_OPTIONS
     if not isinstance(s, dict):
         bad("Settings must be a JSON object.")
     slots = s.get("slots")
-    if not isinstance(slots, list) or len(slots) != 4 or not all(v in SLOT_OPTIONS for v in slots):
-        bad("slots must be a list of four slot values.")
+    if not isinstance(slots, list) or len(slots) != 4 or not all(v in allowed for v in slots):
+        bad("slots must be a list of four slot values" + (" that apply to any label." if filament else "."))
     for key in ("show_rgb", "rgb_swatch"):
         if not isinstance(s.get(key), bool):
             bad(f"{key} must be true or false.")
     rgb_field = s.get("rgb_field")
-    if rgb_field != "" and (rgb_field not in SLOT_OPTIONS or rgb_field == "none"):
-        bad("rgb_field must be empty or a slot value.")
-    if s.get("qr") not in QR_OPTIONS:
+    if rgb_field != "" and (rgb_field not in allowed or rgb_field == "none"):
+        bad("rgb_field must be empty or a slot value" + (" that applies to any label." if filament else "."))
+    if not filament and s.get("qr") not in QR_OPTIONS:
         bad("qr must be detail or edit.")
-    return {k: s[k] for k in DEFAULT_LABEL_SETTINGS}
+    defaults = DEFAULT_FILAMENT_LABEL_SETTINGS if filament else DEFAULT_LABEL_SETTINGS
+    return {k: s[k] for k in defaults}
 
 
 def read_settings_file() -> dict:
@@ -228,12 +245,13 @@ def update_settings_file(key: str, value) -> None:
     write_json(DATA_DIR / "settings.json", stored)
 
 
-def load_label_settings() -> dict:
-    merged = {**DEFAULT_LABEL_SETTINGS, **(read_settings_file().get("label") or {})}
+def load_label_settings(filament: bool = False) -> dict:
+    defaults = DEFAULT_FILAMENT_LABEL_SETTINGS if filament else DEFAULT_LABEL_SETTINGS
+    stored = read_settings_file().get("filament_label" if filament else "label") or {}
     try:
-        return validate_label_settings(merged)
+        return validate_label_settings({**defaults, **stored}, filament)
     except ApiError:
-        return dict(DEFAULT_LABEL_SETTINGS)
+        return dict(defaults)
 
 
 def label_params(settings: dict) -> dict:
@@ -244,7 +262,7 @@ def label_params(settings: dict) -> dict:
         "slots": ",".join(settings["slots"]),
         "show_rgb": str(settings["show_rgb"]).lower(),
         "rgb_swatch": str(settings["rgb_swatch"]).lower(),
-        "qr": settings["qr"],
+        "qr": settings.get("qr", "detail"),
     }
     if settings["rgb_field"]:
         params["rgb_field"] = settings["rgb_field"]
@@ -255,8 +273,9 @@ def label_params(settings: dict) -> dict:
 def get_settings():
     return {
         "label": load_label_settings(),
-        "defaults": DEFAULT_LABEL_SETTINGS,
-        "options": {"slots": SLOT_OPTIONS, "qr": QR_OPTIONS},
+        "filament_label": load_label_settings(filament=True),
+        "defaults": {"label": DEFAULT_LABEL_SETTINGS, "filament_label": DEFAULT_FILAMENT_LABEL_SETTINGS},
+        "options": {"slots": SLOT_OPTIONS, "qr": QR_OPTIONS, "spool_only": sorted(SPOOL_ONLY_SLOTS)},
     }
 
 
@@ -266,8 +285,16 @@ async def put_settings(request: Request):
         body = await request.json()
     except ValueError:
         raise ApiError(400, "invalid_settings", "Settings must be JSON.")
-    label = validate_label_settings(body.get("label") if isinstance(body, dict) else None)
-    update_settings_file("label", label)
+    if not isinstance(body, dict) or not ({"label", "filament_label"} & set(body)):
+        raise ApiError(400, "invalid_settings", "Send label and/or filament_label settings.")
+    # Validate everything before saving anything.
+    clean = {}
+    if "label" in body:
+        clean["label"] = validate_label_settings(body["label"])
+    if "filament_label" in body:
+        clean["filament_label"] = validate_label_settings(body["filament_label"], filament=True)
+    for key, value in clean.items():
+        update_settings_file(key, value)
     return get_settings()
 
 
@@ -334,39 +361,140 @@ async def put_printer_settings(name: str, request: Request):
 
 # ── labels ────────────────────────────────────────────────────────────────────
 
-def label_cache_path(spool: dict, params: dict) -> Path:
+def label_cache_path(spool: dict, params: dict, stem: str | None = None, kind: str = "spool") -> Path:
     """
-    One cache folder per combination of label settings, so switching back to
-    settings used before costs nothing. Within it, the file name changes when
-    the spool does, so a stale label is never served.
+    One cache folder per kind and combination of label settings, so switching
+    back to settings used before costs nothing. Within it, the file name changes
+    when the source spool does, so a stale label is never served.
     """
-    params_tag = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()[:10]
-    version = hashlib.sha1(str(spool.get("updated_at")).encode()).hexdigest()[:12]
-    return DATA_DIR / "labels" / params_tag / f"{spool['short_code']}-{version}.svg"
+    if kind == "spool":
+        tag_source, version_source = params, str(spool.get("updated_at"))
+    else:
+        # A filament label also changes if a different spool becomes its source.
+        tag_source = {"kind": kind, **params}
+        version_source = f"{spool['short_code']}|{spool.get('updated_at')}"
+    params_tag = hashlib.sha1(json.dumps(tag_source, sort_keys=True).encode()).hexdigest()[:10]
+    version = hashlib.sha1(version_source.encode()).hexdigest()[:12]
+    return DATA_DIR / "labels" / params_tag / f"{stem or spool['short_code']}-{version}.svg"
+
+
+def filament_source_spool(spools: list[dict], filament_id: int) -> dict | None:
+    """
+    The spool whose label a filament label is made from. Prefer spools without
+    calibrated overrides, so the label shows the filament's own values, and pick
+    by code so the choice (and the cache) stays stable.
+    """
+    override_keys = ("preferred_nozzle_temp", "preferred_bed_temp", "flow_ratio", "k_value", "td_value")
+
+    def has_overrides(s: dict) -> bool:
+        props = s.get("spool_properties") or {}
+        return any(props.get(k) not in (None, "") for k in override_keys)
+
+    candidates = [s for s in spools if s.get("filament_id") == filament_id]
+    return min(candidates, key=lambda s: (has_overrides(s), s.get("short_code") or ""), default=None)
+
+
+def filament_label_path(spool: dict, filament_id: int) -> Path:
+    params = label_params(load_label_settings(filament=True))
+    return label_cache_path(spool, params, stem=f"f{filament_id}", kind="filament")
 
 
 @app.post("/api/labels/cache-status")
 async def labels_cache_status(request: Request):
-    """Which of these spools' labels are cached, so the page can show the API cost of a batch."""
+    """Which spool and filament labels are cached, so the page can show the API cost of a batch."""
     try:
         body = await request.json()
     except ValueError:
         raise ApiError(400, "invalid_request", "Body must be JSON.")
-    codes = body.get("codes") if isinstance(body, dict) else None
+    if not isinstance(body, dict):
+        raise ApiError(400, "invalid_request", "Body must be a JSON object.")
+    codes = body.get("codes", [])
+    filament_ids = body.get("filaments", [])
     if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes) or len(codes) > 1000:
         raise ApiError(400, "invalid_request", "codes must be a list of spool codes.")
-    spools = {s.get("short_code"): s for s in (await load_spools())["spools"]}
+    if (not isinstance(filament_ids, list) or len(filament_ids) > 1000
+            or not all(isinstance(f, int) and not isinstance(f, bool) for f in filament_ids)):
+        raise ApiError(400, "invalid_request", "filaments must be a list of filament ids.")
+    if "codes" not in body and "filaments" not in body:
+        raise ApiError(400, "invalid_request", "Send codes and/or filaments.")
+
+    all_spools = (await load_spools())["spools"]
+    spools = {s.get("short_code"): s for s in all_spools}
     params = label_params(load_label_settings())
-    result = {"cached": [], "missing": [], "unknown": []}
+    result = {"cached": [], "missing": [], "unknown": [],
+              "filaments": {"cached": [], "missing": [], "unknown": []}}
     for code in codes:
         spool = spools.get(code)
         if spool is None:
             result["unknown"].append(code)
-        elif label_cache_path(spool, params).exists():
-            result["cached"].append(code)
         else:
-            result["missing"].append(code)
+            result["cached" if label_cache_path(spool, params).exists() else "missing"].append(code)
+    for fid in filament_ids:
+        source = filament_source_spool(all_spools, fid)
+        if source is None:
+            result["filaments"]["unknown"].append(fid)
+        else:
+            result["filaments"]["cached" if filament_label_path(source, fid).exists() else "missing"].append(fid)
     return result
+
+
+# ── filament labels ───────────────────────────────────────────────────────────
+#
+# The API only makes spool labels. A filament label is the same layout with a
+# QR code for the filament instead of the spool, so we take a spool label of
+# that filament and swap its QR block. This depends on the SVG's layout, which
+# isn't a documented API: if it changes, we refuse rather than guess.
+
+QR_BLOCK_RE = re.compile(r'<svg x="250" y="150" width="140" height="140" viewBox="0 0 (\d+) \1">.*?</svg>', re.S)
+
+
+def qr_block(url: str) -> str:
+    """A QR code drawn like the site's own: one horizontal stroke per run of dark modules."""
+    qr = segno.make(url, error="L", boost_error=False, micro=False)
+    runs = []
+    for y, row in enumerate(qr.matrix):
+        x = 0
+        while x < len(row):
+            if row[x]:
+                start = x
+                while x < len(row) and row[x]:
+                    x += 1
+                runs.append(f"M{start} {y}.5h{x - start}")
+            else:
+                x += 1
+    n = len(qr.matrix)
+    return (f'<svg x="250" y="150" width="140" height="140" viewBox="0 0 {n} {n}">'
+            f'<path stroke="black" d="{"".join(runs)}"/></svg>')
+
+
+def make_filament_label(spool_svg: bytes, filament_id: int) -> bytes:
+    svg = spool_svg.decode("utf-8")
+    matches = QR_BLOCK_RE.findall(svg)
+    if len(matches) != 1:
+        raise ApiError(502, "label_layout_changed",
+                       "The spool label layout has changed, so SpoolPrint can't turn it into a filament label safely.")
+    return QR_BLOCK_RE.sub(lambda _: qr_block(FILAMENT_URL.format(id=filament_id)), svg, count=1).encode("utf-8")
+
+
+@app.get("/api/filament-label/{filament_id}")
+async def get_filament_label(filament_id: int, refresh: bool = False):
+    source = filament_source_spool((await load_spools())["spools"], filament_id)
+    if source is None:
+        raise ApiError(404, "unknown_filament", f"No spool of filament {filament_id} is in the spool list. Try Refresh.")
+
+    params = label_params(load_label_settings(filament=True))
+    path = filament_label_path(source, filament_id)
+    async with app.state.label_locks.setdefault(f"f{filament_id}", asyncio.Lock()):
+        if refresh or not path.exists():
+            r = await upstream_get(f"/my/spools/{source['short_code']}/label", params)
+            write_atomic(path, make_filament_label(r.content, filament_id))
+            for old in path.parent.glob(f"f{filament_id}-*.svg"):
+                if old != path:
+                    old.unlink(missing_ok=True)
+        body = path.read_bytes()
+
+    return Response(body, media_type="image/svg+xml",
+                    headers={"Cache-Control": "no-cache", "Content-Security-Policy": LABEL_CSP})
 
 
 @app.get("/api/label/{short_code}")

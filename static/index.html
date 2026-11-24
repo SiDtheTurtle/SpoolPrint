@@ -4,19 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SpoolPrint</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='8' y='22' width='84' height='56' rx='8' fill='%231a1814'/><rect x='18' y='32' width='28' height='36' rx='3' fill='%23fafaf7'/></svg>">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root {
-    --bg: #fafaf7; --surface: #ffffff; --ink: #1a1814; --muted: #7a7268; --line: #e4dfd5;
-    --accent: #1a4a7a; --accent-soft: #e6eef6; --ok: #2e6b45; --warn: #a86a00; --bad: #c0392b;
-    --group: #f3f0e9;
+    --bg: #f4f6f9; --surface: #ffffff; --ink: #14202e; --muted: #5f6b7a; --line: #d8dfe8;
+    --accent: #1a4a7a; --accent-soft: #e2ebf5; --ok: #2e6b45; --warn: #a86a00; --bad: #c0392b;
+    --group: #eaeff5;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #161513; --surface: #1f1e1b; --ink: #ece8e0; --muted: #9a9286; --line: #34322d;
-      --accent: #8ab4e0; --accent-soft: #23303d; --ok: #6cbf8a; --warn: #e0a84a; --bad: #e6786b;
-      --group: #262420;
+      --bg: #0e141c; --surface: #151e29; --ink: #e5ebf2; --muted: #8a97a7; --line: #283444;
+      --accent: #8ab4e0; --accent-soft: #1c2e44; --ok: #6cbf8a; --warn: #e0a84a; --bad: #e6786b;
+      --group: #1a2533;
     }
   }
   * { box-sizing: border-box; }
@@ -39,7 +39,8 @@
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
     padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface);
   }
-  h1 { font-size: 1.25rem; margin: 0; margin-right: auto; }
+  h1 { font-size: 1.25rem; margin: 0; margin-right: auto; display: inline-flex; align-items: center; gap: 10px; }
+  h1 img { width: 32px; height: 32px; }
   .meta { color: var(--muted); font-size: .85rem; }
   .meta.low { color: var(--warn); }
   .meta.bad { color: var(--bad); }
@@ -140,6 +141,11 @@
   tbody tr.group .twisty { display: inline-block; width: 1em; color: var(--muted); }
   tbody tr.group small { font-weight: normal; color: var(--muted); margin-left: 6px; }
   tbody tr.group .gswatch { display: inline-block; vertical-align: -4px; margin-right: 8px; }
+  tbody tr.group.previewing td { background: var(--accent-soft); }
+  .gline { display: flex; align-items: center; gap: 4px; }
+  .gline .gtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .gline .gextra { margin-left: auto; display: flex; align-items: center; gap: 10px; font-weight: normal; }
+  .flabel { display: flex; align-items: center; gap: 6px; font-size: .88rem; cursor: pointer; }
   tbody tr.spool td.first-in-group { padding-left: 8px; }
   td button { padding: 2px 8px; font-size: .85rem; }
   .swatch {
@@ -156,7 +162,7 @@
   #preview .sub { color: var(--muted); font-size: .85rem; margin-bottom: 10px; }
   .label-box {
     background: #fff; border: 1px solid var(--line); border-radius: 4px; aspect-ratio: 4 / 3;
-    display: grid; place-items: center; color: #7a7268; overflow: hidden;
+    display: grid; place-items: center; color: #5f6b7a; overflow: hidden;
   }
   .label-box img { width: 100%; height: 100%; display: block; }
   .label-box.error { color: var(--bad); padding: 12px; text-align: center; }
@@ -191,7 +197,7 @@
 </head>
 <body>
 <header>
-  <h1>SpoolPrint</h1>
+  <h1><img src="/logo.svg" alt="">SpoolPrint</h1>
   <span class="meta" id="quota"></span>
   <span class="meta" id="fetched"></span>
   <button id="refresh" title="Fetch the spool list again (1 API request)">Refresh list</button>
@@ -211,7 +217,7 @@
   </div>
 
   <section>
-    <h3>Label content</h3>
+    <h3>Spool labels</h3>
     <p class="hint">Shared by every device. After a change, each label is downloaded again the first time
       it's used (1 API request per label). Settings you've used before are still cached.</p>
     <div class="fields">
@@ -223,9 +229,27 @@
       <label>QR code opens <select id="qr"></select></label>
     </div>
     <div class="row">
-      <button id="saveLabel" class="primary">Save label settings</button>
+      <button id="saveLabel" class="primary">Save spool label settings</button>
       <button id="resetLabel">Reset to defaults</button>
       <span id="labelStatus" class="hint"></span>
+    </div>
+  </section>
+
+  <section>
+    <h3>Filament labels</h3>
+    <p class="hint">Made from one of your spools' labels, with the QR code changed to open the filament's
+      page. Only properties that apply to any spool are offered.</p>
+    <div class="fields">
+      <label>Property 1 <select id="fslot0"></select></label>
+      <label>Property 2 <select id="fslot1"></select></label>
+      <label>Property 3 <select id="fslot2"></select></label>
+      <label>Property 4 <select id="fslot3"></select></label>
+      <label>Colour area <select id="fColorArea"></select></label>
+    </div>
+    <div class="row">
+      <button id="saveFilamentLabel" class="primary">Save filament label settings</button>
+      <button id="resetFilamentLabel">Reset to defaults</button>
+      <span id="filamentLabelStatus" class="hint"></span>
     </div>
   </section>
 
@@ -327,11 +351,13 @@ const state = {
   spools: [],             // flat list from /api/spools
   byCode: new Map(),      // short_code -> spool
   selected: new Set(),    // short codes, kept across filtering, sorting and refreshes
+  selectedFilaments: new Set(), // filament ids whose filament label is selected
   collapsed: new Set(),   // group keys the user has collapsed
   shown: [],              // spools currently passing the filters, in display order
   rowChecks: new Map(),   // short_code -> row checkbox
+  filamentChecks: new Map(), // filament id -> "Filament label" checkbox
   groupChecks: [],        // [{ cb, codes }]
-  previewCode: null,
+  previewItem: null,      // the spool or filament label being previewed
   previewUrl: null,       // object URL of the label being previewed
   previewBlob: null,
   rasterReady: false,
@@ -548,9 +574,10 @@ function spoolRow(s) {
 
   const previewBtn = el("button", { type: "button", title: "Preview label" },
     el("span", { class: "btn-long" }, "Preview"), el("span", { class: "btn-short" }, "View"));
-  previewBtn.addEventListener("click", (e) => { e.stopPropagation(); showPreview(s.short_code); });
+  previewBtn.addEventListener("click", (e) => { e.stopPropagation(); showPreview(spoolItem(s)); });
 
-  const tr = el("tr", { class: "spool" + (isSpent(s) ? " spent" : "") + (s.short_code === state.previewCode ? " previewing" : "") },
+  const previewing = state.previewItem?.key === s.short_code;
+  const tr = el("tr", { class: "spool" + (isSpent(s) ? " spent" : "") + (previewing ? " previewing" : "") },
     el("td", { class: "sel" }, cb),
     el("td", { class: "sw" }, el("span", { class: "swatch", style: `background:${s.rgb || "transparent"}`, title: s.rgb || "" })),
     el("td", { class: "clip c-colour", title: s.color || "" }, s.color || "—"),
@@ -581,12 +608,31 @@ function groupRow(group, spools) {
        first.color || "Unknown colour", el("small", {}, `${first.brand} · ${materialName(first)}`)]
     : [materialName(first) || "Unknown material"];
 
-  const tr = el("tr", { class: "group" },
+  // Filament groups can also print a filament label.
+  let extra = null;
+  if (group.kind === "filament") {
+    const fid = first.filament_id;
+    const fcb = el("input", { type: "checkbox", checked: state.selectedFilaments.has(fid) });
+    fcb.addEventListener("change", () => setFilamentSelected([fid], fcb.checked));
+    state.filamentChecks.set(fid, fcb);
+    const flabel = el("label", { class: "flabel", title: "Include this filament's label in the batch" }, fcb, "Filament label");
+    const fpreview = el("button", { type: "button", title: "Preview filament label" },
+      el("span", { class: "btn-long" }, "Preview"), el("span", { class: "btn-short" }, "View"));
+    fpreview.addEventListener("click", () => showPreview(filamentItem(fid)));
+    extra = el("span", { class: "gextra" }, flabel, fpreview);
+    for (const node of [flabel, fpreview]) node.addEventListener("click", (e) => e.stopPropagation());
+  }
+
+  const previewing = group.kind === "filament" && state.previewItem?.key === `f${first.filament_id}`;
+  const tr = el("tr", { class: "group" + (previewing ? " previewing" : "") },
     el("td", { class: "sel" }, cb),
     el("td", { colSpan: COLSPAN - 1 },
-      el("span", { class: "twisty" }, collapsed ? "▸" : "▾"), ...title,
-      el("small", {}, `${spools.length} spool${spools.length === 1 ? "" : "s"}`)),
+      el("div", { class: "gline" },
+        el("span", { class: "twisty" }, collapsed ? "▸" : "▾"),
+        el("span", { class: "gtitle" }, ...title, el("small", {}, plural(spools.length, "spool"))),
+        extra)),
   );
+  if (group.kind === "filament") tr.dataset.fid = String(first.filament_id);
   tr.addEventListener("click", () => {
     if (collapsed) state.collapsed.delete(group.key); else state.collapsed.add(group.key);
     render();
@@ -599,6 +645,7 @@ function render() {
   const location = $("location").value;
   state.shown = state.spools.filter((s) => spoolMatches(s, query, location)).sort(compareSpools);
   state.rowChecks.clear();
+  state.filamentChecks.clear();
   state.groupChecks = [];
 
   const frag = document.createDocumentFragment();
@@ -652,18 +699,56 @@ function setSelected(codes, on) {
   updateSelectionUi();
 }
 
+function setFilamentSelected(ids, on) {
+  for (const id of ids) {
+    if (on) state.selectedFilaments.add(id); else state.selectedFilaments.delete(id);
+  }
+  updateSelectionUi();
+}
+
+function selectionCount() {
+  return state.selected.size + state.selectedFilaments.size;
+}
+
 function updateSelectionUi() {
   for (const [code, cb] of state.rowChecks) cb.checked = state.selected.has(code);
+  for (const [fid, cb] of state.filamentChecks) cb.checked = state.selectedFilaments.has(fid);
   for (const { cb, codes } of state.groupChecks) {
     const n = codes.filter((c) => state.selected.has(c)).length;
     cb.checked = n > 0 && n === codes.length;
     cb.indeterminate = n > 0 && n < codes.length;
   }
-  const n = state.selected.size;
-  $("selCount").textContent = `${n} selected`;
+  const spools = state.selected.size, filaments = state.selectedFilaments.size, n = spools + filaments;
+  $("selCount").textContent = filaments
+    ? `${plural(spools, "spool label")} + ${plural(filaments, "filament label")} selected`
+    : `${n} selected`;
   $("clearSel").disabled = n === 0;
-  $("printBatch").textContent = n ? `Print ${n} label${n === 1 ? "" : "s"}` : "Print labels";
+  $("printBatch").textContent = n ? `Print ${plural(n, "label")}` : "Print labels";
   $("printBatch").disabled = n === 0 || printer.busy;
+}
+
+// ── labels: a spool label or a filament label ────────────────────────────────
+
+function spoolItem(s) {
+  return { kind: "spool", key: s.short_code, spool: s };
+}
+
+/** A filament label item; `spool` is any spool of it, for its name and colour. */
+function filamentItem(fid) {
+  const spool = state.spools.find((s) => s.filament_id === fid);
+  return spool ? { kind: "filament", key: `f${fid}`, id: fid, spool } : null;
+}
+
+function itemUrl(item) {
+  return item.kind === "spool"
+    ? `/api/label/${encodeURIComponent(item.key)}`
+    : `/api/filament-label/${item.id}`;
+}
+
+function itemTitle(item) {
+  return item.kind === "spool"
+    ? `${item.spool.color} · ${item.key}`
+    : `${item.spool.color} · filament label`;
 }
 
 // ── spools ───────────────────────────────────────────────────────────────────
@@ -679,8 +764,10 @@ async function loadSpools(refresh = false) {
       s._search = [s.brand, s.material, s.material_type, s.color, s.short_code, s.location]
         .filter(Boolean).join(" ").toLowerCase();
     }
-    // Drop selections for spools that no longer exist.
+    // Drop selections for spools and filaments that no longer exist.
     for (const code of state.selected) if (!state.byCode.has(code)) state.selected.delete(code);
+    const filamentIds = new Set(state.spools.map((s) => s.filament_id));
+    for (const fid of state.selectedFilaments) if (!filamentIds.has(fid)) state.selectedFilaments.delete(fid);
     showError("");
     renderLocations();
     render();
@@ -879,7 +966,7 @@ function readOffset(input) {
 async function printSettingsChanged(save = true) {
   if (save) savePrinterSettings();
   renderCalibration();
-  if (state.previewBlob && state.previewCode) await rasterise(state.previewBlob, $("pvRaster"));
+  if (state.previewBlob && state.previewItem) await rasterise(state.previewBlob, $("pvRaster"));
 }
 
 // ── printer connection & printing ────────────────────────────────────────────
@@ -1012,12 +1099,12 @@ async function printPreviewed() {
   // Print from a copy, so opening another preview mid-print can't change it.
   const copy = el("canvas", { width: LABEL_W, height: LABEL_H });
   copy.getContext("2d").drawImage($("pvRaster"), 0, 0);
-  const code = state.previewCode;
+  const title = state.previewItem ? itemTitle(state.previewItem) : "label";
   const status = $("pvProgress");
   status.textContent = "Starting print…";
   try {
     await printCanvases([copy], { onProgress: (e) => { status.textContent = progressText(e); } });
-    status.textContent = `Printed ${code}.`;
+    status.textContent = `Printed ${title}.`;
   } catch (e) {
     status.textContent = `Print failed: ${e?.message || e}`;
   }
@@ -1038,7 +1125,7 @@ async function printCalibration() {
 
 // ── batch printing ───────────────────────────────────────────────────────────
 
-const batch = { running: false, cancelled: false, spools: [] };
+const batch = { running: false, cancelled: false, items: [] };
 
 function plural(n, word) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -1059,18 +1146,40 @@ function setBatch({ summary, status, progress, problems, actions }) {
   }
   if (problems !== undefined) {
     $("batchProblems").hidden = !problems.length;
-    $("batchProblems").replaceChildren(...problems.map((p) => el("li", {}, `${p.spool.short_code} (${p.spool.color}): ${p.message}`)));
+    $("batchProblems").replaceChildren(...problems.map((p) => el("li", {}, `${itemTitle(p.item)}: ${p.message}`)));
   }
   if (actions !== undefined) $("batchActions").replaceChildren(...actions);
 }
 
-/** Selected spools in the table's current sort order (including any hidden by filters). */
-function selectedInOrder() {
-  return state.spools.filter((s) => state.selected.has(s.short_code)).sort(compareSpools);
+/**
+ * Everything selected, in print order (including spools hidden by filters).
+ * Spools alone print in the table's sort order. With filament labels, each
+ * filament prints its label first and then its selected spools, filaments in
+ * the order their first spool appears in the table.
+ */
+function selectedItemsInOrder() {
+  const sorted = [...state.spools].sort(compareSpools);
+  const spools = sorted.filter((s) => state.selected.has(s.short_code));
+  if (!state.selectedFilaments.size) return spools.map(spoolItem);
+
+  const firstIndex = new Map();
+  sorted.forEach((s, i) => { if (!firstIndex.has(s.filament_id)) firstIndex.set(s.filament_id, i); });
+  const fids = [...new Set([...state.selectedFilaments, ...spools.map((s) => s.filament_id)])]
+    .filter((fid) => firstIndex.has(fid))
+    .sort((a, b) => firstIndex.get(a) - firstIndex.get(b));
+  return fids.flatMap((fid) => [
+    ...(state.selectedFilaments.has(fid) ? [filamentItem(fid)] : []),
+    ...spools.filter((s) => s.filament_id === fid).map(spoolItem),
+  ]);
 }
 
-async function fetchLabelBlob(code) {
-  const r = await fetch(`/api/label/${encodeURIComponent(code)}`);
+function deselectItems(items) {
+  setSelected(items.filter((i) => i.kind === "spool").map((i) => i.key), false);
+  setFilamentSelected(items.filter((i) => i.kind === "filament").map((i) => i.id), false);
+}
+
+async function fetchLabel(url) {
+  const r = await fetch(url);
   if (!r.ok) {
     const body = await r.json().catch(() => null);
     throw new Error(body?.error?.message || `Server returned HTTP ${r.status}.`);
@@ -1093,17 +1202,22 @@ async function mapLimit(items, limit, fn) {
 const closeBatchButton = () => actionButton("Close", () => $("batch").close());
 
 async function openBatch() {
-  const spools = selectedInOrder();
-  if (!spools.length || batch.running) return;
-  batch.spools = spools;
-  $("batchTitle").textContent = `Print ${plural(spools.length, "label")}`;
+  const items = selectedItemsInOrder().filter(Boolean);
+  if (!items.length || batch.running) return;
+  const spoolItems = items.filter((i) => i.kind === "spool");
+  const filamentItems = items.filter((i) => i.kind === "filament");
+  batch.items = items;
+  $("batchTitle").textContent = `Print ${plural(items.length, "label")}`;
   setBatch({ summary: "Checking which labels are already downloaded…", status: "", progress: null, problems: [], actions: [closeBatchButton()] });
   $("batch").showModal();
 
   let cache, status;
   try {
     [cache, status] = await Promise.all([
-      apiSend("POST", "/api/labels/cache-status", { codes: spools.map((s) => s.short_code) }),
+      apiSend("POST", "/api/labels/cache-status", {
+        codes: spoolItems.map((i) => i.key),
+        filaments: filamentItems.map((i) => i.id),
+      }),
       apiJson("/api/status"),
     ]);
   } catch (e) {
@@ -1111,26 +1225,35 @@ async function openBatch() {
     return;
   }
 
-  const missing = cache.missing.length;
-  const lines = [`Prints in the table's current order.`];
+  const missing = cache.missing.length + cache.filaments.missing.length;
+  const lines = [];
+  if (filamentItems.length) {
+    lines.push(`${plural(filamentItems.length, "filament label")} and ${plural(spoolItems.length, "spool label")},` +
+      " each filament's label followed by its spools.");
+  } else {
+    lines.push("Prints in the table's current order.");
+  }
   lines.push(missing
     ? `${plural(missing, "label")} to download first: ${plural(missing, "API request")}` +
       (status.quota ? ` (${status.quota.remaining} left this month).` : ".")
     : "All labels are already downloaded, so no API requests are needed.");
-  const hidden = spools.filter((s) => !state.shown.includes(s)).length;
+  const hidden = spoolItems.filter((i) => !state.shown.includes(i.spool)).length;
   if (hidden) lines.push(`${plural(hidden, "selected spool")} ${hidden === 1 ? "is" : "are"} hidden by the current filters but will be printed.`);
-  const spent = spools.filter(isSpent).length;
+  const spent = spoolItems.filter((i) => isSpent(i.spool)).length;
   if (spent) lines.push(`${plural(spent, "spent spool")} included.`);
-  if (cache.unknown.length) lines.push(`${cache.unknown.length} no longer in the spool list and will be skipped.`);
+  const unknown = cache.unknown.length + cache.filaments.unknown.length;
+  if (unknown) lines.push(`${unknown} no longer in the spool list and will be skipped.`);
   if (status.quota && missing > status.quota.remaining) lines.push("That is more than the requests left this month, so some labels will fail.");
 
-  batch.spools = spools.filter((s) => !cache.unknown.includes(s.short_code));
+  batch.items = items.filter((i) => i.kind === "spool"
+    ? !cache.unknown.includes(i.key)
+    : !cache.filaments.unknown.includes(i.id));
   setBatch({ summary: lines.join(" ") });
   renderBatchStartActions();
 }
 
 function renderBatchStartActions() {
-  const n = batch.spools.length;
+  const n = batch.items.length;
   if (!printer.client) {
     setBatch({
       status: "Connect the printer to print.",
@@ -1143,12 +1266,12 @@ function renderBatchStartActions() {
   }
   setBatch({
     status: `Printer: ${printer.deviceName || "connected"}.`,
-    actions: [closeBatchButton(), actionButton(`Print ${plural(n, "label")}`, () => runBatch(batch.spools), true)],
+    actions: [closeBatchButton(), actionButton(`Print ${plural(n, "label")}`, () => runBatch(batch.items), true)],
   });
   if (!n) $("batchActions").lastChild.disabled = true;
 }
 
-async function runBatch(spools) {
+async function runBatch(items) {
   batch.running = true;
   batch.cancelled = false;
   const cancelButton = actionButton("Cancel", () => {
@@ -1161,21 +1284,21 @@ async function runBatch(spools) {
   try {
     // 1. Download and draw every label before printing, so a missing label
     //    can't stop the job halfway.
-    const canvases = new Array(spools.length);
+    const canvases = new Array(items.length);
     const problems = [];
     let prepared = 0;
-    setBatch({ status: `Preparing labels: 0 of ${spools.length}` });
-    await mapLimit(spools, 3, async (s, i) => {
+    setBatch({ status: `Preparing labels: 0 of ${items.length}` });
+    await mapLimit(items, 3, async (item, i) => {
       if (batch.cancelled) return;
       try {
         const canvas = el("canvas");
-        await rasterise(await fetchLabelBlob(s.short_code), canvas);
+        await rasterise(await fetchLabel(itemUrl(item)), canvas);
         canvases[i] = canvas;
       } catch (e) {
-        problems.push({ spool: s, message: e.message });
+        problems.push({ item, message: e.message });
       }
       prepared++;
-      setBatch({ status: `Preparing labels: ${prepared} of ${spools.length}`, progress: prepared / spools.length });
+      setBatch({ status: `Preparing labels: ${prepared} of ${items.length}`, progress: prepared / items.length });
     });
     loadStatus();
 
@@ -1184,7 +1307,7 @@ async function runBatch(spools) {
       return;
     }
 
-    let toPrint = spools.map((s, i) => ({ spool: s, canvas: canvases[i] })).filter((p) => p.canvas);
+    let toPrint = items.map((item, i) => ({ item, canvas: canvases[i] })).filter((p) => p.canvas);
     if (problems.length) {
       setBatch({
         summary: `${plural(problems.length, "label")} could not be prepared. Nothing has been printed yet.`,
@@ -1213,7 +1336,7 @@ async function runBatch(spools) {
     const total = toPrint.length;
     setBatch({ summary: `Printing ${plural(total, "label")}.`, progress: 0 });
     let current = 0;
-    const describe = (i) => `${toPrint[i].spool.color} · ${toPrint[i].spool.short_code}`;
+    const describe = (i) => itemTitle(toPrint[i].item);
     try {
       const result = await printCanvases(toPrint.map((p) => p.canvas), {
         onPageStart: (i) => { current = i; setBatch({ status: `Printing ${i + 1} of ${total}: ${describe(i)}` }); },
@@ -1221,25 +1344,25 @@ async function runBatch(spools) {
         onPageDone: (i) => setBatch({ progress: (i + 1) / total }),
         isCancelled: () => batch.cancelled,
       });
-      const done = toPrint.slice(0, result.printed).map((p) => p.spool.short_code);
+      const done = toPrint.slice(0, result.printed).map((p) => p.item);
       setBatch({
         summary: result.cancelled
           ? `Cancelled after ${result.printed} of ${plural(total, "label")}.`
           : `Printed ${plural(result.printed, "label")}.`,
         status: "",
         actions: [
-          actionButton("Deselect printed", () => { setSelected(done, false); $("batch").close(); }),
+          actionButton("Deselect printed", () => { deselectItems(done); $("batch").close(); }),
           closeBatchButton(),
         ],
       });
     } catch (e) {
       const printed = e.printed || 0;
-      const done = toPrint.slice(0, printed).map((p) => p.spool.short_code);
+      const done = toPrint.slice(0, printed).map((p) => p.item);
       setBatch({
         summary: `Printing stopped after ${printed} of ${plural(total, "label")}: ${e.message}`,
         status: printed < total ? `The next label was ${describe(printed)}.` : "",
         actions: [
-          ...(printed ? [actionButton("Deselect printed", () => { setSelected(done, false); $("batch").close(); })] : []),
+          ...(printed ? [actionButton("Deselect printed", () => { deselectItems(done); $("batch").close(); })] : []),
           closeBatchButton(),
         ],
       });
@@ -1253,6 +1376,12 @@ async function runBatch(spools) {
 
 let labelDefaults = null;
 
+// The two label settings forms share a shape; filament labels have no QR choice.
+const LABEL_FORMS = {
+  label: { slot: "slot", area: "colorArea", qr: "qr", save: "saveLabel", status: "labelStatus" },
+  filament_label: { slot: "fslot", area: "fColorArea", qr: null, save: "saveFilamentLabel", status: "filamentLabelStatus" },
+};
+
 /** The colour area is one dropdown in the UI but three API parameters. */
 function colorAreaValue(l) {
   if (!l.show_rgb) return "hidden";
@@ -1260,78 +1389,99 @@ function colorAreaValue(l) {
   return l.rgb_swatch ? "swatch" : "code";
 }
 
-function readLabelForm() {
-  const area = $("colorArea").value;
-  return {
-    slots: [0, 1, 2, 3].map((i) => $(`slot${i}`).value),
+function readLabelForm(kind) {
+  const f = LABEL_FORMS[kind];
+  const area = $(f.area).value;
+  const out = {
+    slots: [0, 1, 2, 3].map((i) => $(`${f.slot}${i}`).value),
     show_rgb: area !== "hidden",
     rgb_swatch: area === "swatch",
     rgb_field: area.startsWith("field:") ? area.slice(6) : "",
-    qr: $("qr").value,
   };
+  if (f.qr) out.qr = $(f.qr).value;
+  return out;
 }
 
-function fillLabelForm(l) {
-  l.slots.forEach((v, i) => { $(`slot${i}`).value = v; });
-  $("colorArea").value = colorAreaValue(l);
-  $("qr").value = l.qr;
+function fillLabelForm(kind, l) {
+  const f = LABEL_FORMS[kind];
+  l.slots.forEach((v, i) => { $(`${f.slot}${i}`).value = v; });
+  $(f.area).value = colorAreaValue(l);
+  if (f.qr) $(f.qr).value = l.qr;
 }
 
 async function loadLabelSettings() {
   try {
     const s = await apiJson("/api/settings");
     labelDefaults = s.defaults;
-    const slotEntries = Object.entries(s.options.slots);
-    for (let i = 0; i < 4; i++) {
-      $(`slot${i}`).replaceChildren(...slotEntries.map(([v, name]) => el("option", { value: v }, name)));
+    const spoolOnly = new Set(s.options.spool_only);
+    for (const [kind, f] of Object.entries(LABEL_FORMS)) {
+      const entries = Object.entries(s.options.slots).filter(([v]) => kind === "label" || !spoolOnly.has(v));
+      for (let i = 0; i < 4; i++) {
+        $(`${f.slot}${i}`).replaceChildren(...entries.map(([v, name]) => el("option", { value: v }, name)));
+      }
+      $(f.area).replaceChildren(
+        el("option", { value: "code" }, "Colour code (hex)"),
+        el("option", { value: "swatch" }, "Colour swatch"),
+        el("option", { value: "hidden" }, "Hidden"),
+        ...entries.filter(([v]) => v !== "none").map(([v, name]) => el("option", { value: `field:${v}` }, `Field: ${name}`)),
+      );
+      if (f.qr) $(f.qr).replaceChildren(...Object.entries(s.options.qr).map(([v, name]) => el("option", { value: v }, name)));
+      fillLabelForm(kind, s[kind]);
     }
-    $("colorArea").replaceChildren(
-      el("option", { value: "code" }, "Colour code (hex)"),
-      el("option", { value: "swatch" }, "Colour swatch"),
-      el("option", { value: "hidden" }, "Hidden"),
-      ...slotEntries.filter(([v]) => v !== "none").map(([v, name]) => el("option", { value: `field:${v}` }, `Field: ${name}`)),
-    );
-    $("qr").replaceChildren(...Object.entries(s.options.qr).map(([v, name]) => el("option", { value: v }, name)));
-    fillLabelForm(s.label);
   } catch (e) {
     $("labelStatus").textContent = `Could not load label settings: ${e.message}`;
   }
 }
 
-async function saveLabelSettings() {
-  const status = $("labelStatus");
-  $("saveLabel").disabled = true;
+async function saveLabelSettings(kind) {
+  const f = LABEL_FORMS[kind];
+  const status = $(f.status);
+  $(f.save).disabled = true;
   status.textContent = "Saving…";
   try {
-    const s = await apiSend("PUT", "/api/settings", { label: readLabelForm() });
-    fillLabelForm(s.label);
+    const s = await apiSend("PUT", "/api/settings", { [kind]: readLabelForm(kind) });
+    fillLabelForm(kind, s[kind]);
     status.textContent = "Saved.";
-    if (state.previewCode) showPreview(state.previewCode); // shows the label with the new content
+    // Show the open preview with the new content if it's the kind just changed.
+    const item = state.previewItem;
+    if (item && (item.kind === "spool") === (kind === "label")) showPreview(item);
   } catch (e) {
     status.textContent = `Not saved: ${e.message}`;
   } finally {
-    $("saveLabel").disabled = false;
+    $(f.save).disabled = false;
   }
 }
 
 // ── preview ──────────────────────────────────────────────────────────────────
 
 function markPreviewRow() {
-  for (const tr of document.querySelectorAll("tr.spool.previewing")) tr.classList.remove("previewing");
-  if (state.previewCode) {
-    document.querySelector(`tr.spool[data-code="${CSS.escape(state.previewCode)}"]`)?.classList.add("previewing");
+  for (const tr of document.querySelectorAll("tr.previewing")) tr.classList.remove("previewing");
+  const item = state.previewItem;
+  if (item?.kind === "spool") {
+    document.querySelector(`tr.spool[data-code="${CSS.escape(item.key)}"]`)?.classList.add("previewing");
+  } else if (item?.kind === "filament") {
+    document.querySelector(`tr.group[data-fid="${item.id}"]`)?.classList.add("previewing");
   }
 }
 
-async function showPreview(code) {
-  const s = state.byCode.get(code);
-  if (!s) return;
-  state.previewCode = code;
+async function showPreview(item) {
+  if (!item) return;
+  const s = item.spool;
+  state.previewItem = item;
   markPreviewRow();
 
-  $("pvCode").textContent = code;
-  $("pvSub").textContent = `${s.brand} ${materialName(s)} · ${s.color} · ${s.location || "no location"} · ${s.remaining_grams} g`;
-  $("pvLink").href = s.spool_url;
+  if (item.kind === "spool") {
+    $("pvCode").textContent = item.key;
+    $("pvSub").textContent = `${s.brand} ${materialName(s)} · ${s.color} · ${s.location || "no location"} · ${s.remaining_grams} g`;
+    $("pvLink").textContent = "Open spool page";
+    $("pvLink").href = s.spool_url;
+  } else {
+    const count = state.spools.filter((x) => x.filament_id === item.id).length;
+    $("pvCode").textContent = "Filament label";
+    $("pvSub").textContent = `${s.brand} ${materialName(s)} · ${s.color} · ${plural(count, "spool")}`;
+    $("pvLink").textContent = "Open filament page";
+    $("pvLink").href = `https://spooldb.com/f/${item.id}`;
+  }
   const box = $("pvBox");
   box.className = "label-box";
   box.replaceChildren("Loading label…");
@@ -1343,19 +1493,20 @@ async function showPreview(code) {
   updatePrinterUi();
   $("preview").hidden = false;
 
+  const stale = () => state.previewItem !== item; // another preview was opened meanwhile
   try {
-    const blob = await fetchLabelBlob(code);
-    if (state.previewCode !== code) return; // another preview was opened meanwhile
+    const blob = await fetchLabel(itemUrl(item));
+    if (stale()) return;
     if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
     state.previewUrl = URL.createObjectURL(blob);
-    box.replaceChildren(el("img", { src: state.previewUrl, alt: `Label for spool ${code}` }));
+    box.replaceChildren(el("img", { src: state.previewUrl, alt: `Label: ${itemTitle(item)}` }));
     state.previewBlob = blob;
     await rasterise(blob, raster);
-    if (state.previewCode !== code) return;
+    if (stale()) return;
     state.rasterReady = true;
     updatePrinterUi();
   } catch (e) {
-    if (state.previewCode !== code) return;
+    if (stale()) return;
     box.className = "label-box error";
     box.replaceChildren(e.message);
   } finally {
@@ -1365,7 +1516,7 @@ async function showPreview(code) {
 
 function closePreview() {
   $("preview").hidden = true;
-  state.previewCode = null;
+  state.previewItem = null;
   markPreviewRow();
 }
 
@@ -1379,7 +1530,7 @@ $("groupBy").addEventListener("change", (e) => { view.group = e.target.value; st
 $("hideEmpty").checked = view.hideEmpty;
 $("hideEmpty").addEventListener("change", (e) => { view.hideEmpty = e.target.checked; saveView(); render(); });
 $("selectShown").addEventListener("click", () => setSelected(state.shown.map((s) => s.short_code), true));
-$("clearSel").addEventListener("click", () => { state.selected.clear(); updateSelectionUi(); });
+$("clearSel").addEventListener("click", () => { state.selected.clear(); state.selectedFilaments.clear(); updateSelectionUi(); });
 $("expandAll").addEventListener("click", () => { state.collapsed.clear(); render(); });
 $("collapseAll").addEventListener("click", () => {
   for (const s of state.shown) state.collapsed.add(groupOf(s).key);
@@ -1395,11 +1546,14 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("sett
 
 $("openSettings").addEventListener("click", () => { renderCalibration(); $("settings").showModal(); });
 $("closeSettings").addEventListener("click", () => $("settings").close());
-$("saveLabel").addEventListener("click", saveLabelSettings);
-$("resetLabel").addEventListener("click", () => {
-  if (labelDefaults) fillLabelForm(labelDefaults);
-  $("labelStatus").textContent = "Defaults filled in. Save to use them.";
-});
+$("saveLabel").addEventListener("click", () => saveLabelSettings("label"));
+$("saveFilamentLabel").addEventListener("click", () => saveLabelSettings("filament_label"));
+for (const [kind, f] of Object.entries(LABEL_FORMS)) {
+  $(f.save.replace("save", "reset")).addEventListener("click", () => {
+    if (labelDefaults) fillLabelForm(kind, labelDefaults[kind]);
+    $(f.status).textContent = "Defaults filled in. Save to use them.";
+  });
+}
 $("printCal").addEventListener("click", printCalibration);
 
 $("optDensity").addEventListener("change", (e) => { printerSettings.density = Number(e.target.value); printSettingsChanged(); });
