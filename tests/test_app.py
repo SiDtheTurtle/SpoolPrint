@@ -67,15 +67,18 @@ def client(api):
         yield c
 
 
-def test_tree_groups_spools_under_filaments(client, api):
+def test_spools_are_a_flat_list_with_filament_and_purchase_date(client, api):
+    api.spools[0]["spool_properties"] = {"purchase_date": "2026-09-30", "purchase_price": 19.99}
     body = client.get("/api/spools").json()
     assert body["spool_count"] == 4
-    names = [(f["brand"], f["color"]) for f in body["filaments"]]
-    assert names == [("Anycubic", "Blue"), ("Bambu Lab", "Charcoal Black"), ("Bambu Lab", "Jade White")]
-    black = body["filaments"][1]
-    assert black["filament_id"] == 101
-    assert [s["short_code"] for s in black["spools"]] == ["AAA111", "BBB222"]
-    assert set(black["spools"][0]) == set(niimbatch.SPOOL_FIELDS)
+    first = body["spools"][0]
+    assert first["short_code"] == "BBB222"
+    assert first["filament_id"] == 101
+    assert first["color"] == "Charcoal Black"
+    assert first["purchase_date"] == "2026-09-30"
+    assert "purchase_price" not in first
+    assert body["spools"][1]["purchase_date"] is None
+    assert set(first) == {*niimbatch.SPOOL_FIELDS, "filament_id", *niimbatch.FILAMENT_FIELDS, "purchase_date"}
 
 
 def test_spool_list_is_cached_until_refresh(client, api):
@@ -242,3 +245,46 @@ def test_legacy_flat_label_cache_removed_on_start(api, tmp_path):
     with TestClient(niimbatch.app):
         pass
     assert not (tmp_path / "labels" / "AAA111-abc.svg").exists()
+
+
+# ── printer settings ─────────────────────────────────────────────────────────
+
+B1 = {"density": 4, "direction": "top", "flip": True, "offset_x": -0.6, "offset_y": 0.25}
+
+
+def test_unknown_printer_gets_defaults_unsaved(client, api):
+    body = client.get("/api/printers/B1-H1234").json()
+    assert body == {"name": "B1-H1234", "saved": False, "settings": niimbatch.DEFAULT_PRINTER_SETTINGS}
+
+
+def test_printer_settings_saved_per_printer_and_snapped_to_dots(client, api):
+    r = client.put("/api/printers/B1-H1234", json=B1)
+    assert r.status_code == 200
+    assert r.json()["settings"]["offset_x"] == -0.625  # nearest whole dot
+    assert client.get("/api/printers/B1-H1234").json()["saved"] is True
+    assert client.get("/api/printers/B1-H1234").json()["settings"]["density"] == 4
+    assert client.get("/api/printers/B1-OTHER").json()["saved"] is False
+
+
+def test_label_and_printer_settings_do_not_overwrite_each_other(client, api):
+    client.put("/api/printers/B1-H1234", json=B1)
+    client.put("/api/settings", json={"label": CUSTOM})
+    assert client.get("/api/printers/B1-H1234").json()["saved"] is True
+    client.put("/api/printers/B1-H1234", json={**B1, "density": 2})
+    assert client.get("/api/settings").json()["label"] == CUSTOM
+
+
+@pytest.mark.parametrize("bad", [
+    {**B1, "density": 6}, {**B1, "density": "3"}, {**B1, "density": True},
+    {**B1, "direction": "right"}, {**B1, "flip": 1},
+    {**B1, "offset_x": 5.5}, {**B1, "offset_y": "1"}, [],
+])
+def test_invalid_printer_settings_rejected(client, api, bad):
+    r = client.put("/api/printers/B1-H1234", json=bad)
+    assert r.status_code == 400
+    assert client.get("/api/printers/B1-H1234").json()["saved"] is False
+
+
+def test_invalid_printer_name_rejected(client, api):
+    assert client.get("/api/printers/bad%2Fname").status_code in (400, 404)
+    assert client.put("/api/printers/" + "x" * 65, json=B1).status_code == 400

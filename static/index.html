@@ -9,16 +9,18 @@
   :root {
     --bg: #fafaf7; --surface: #ffffff; --ink: #1a1814; --muted: #7a7268; --line: #e4dfd5;
     --accent: #1a4a7a; --accent-soft: #e6eef6; --ok: #2e6b45; --warn: #a86a00; --bad: #c0392b;
+    --group: #f3f0e9;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #161513; --surface: #1f1e1b; --ink: #ece8e0; --muted: #9a9286; --line: #34322d;
       --accent: #8ab4e0; --accent-soft: #23303d; --ok: #6cbf8a; --warn: #e0a84a; --bad: #e6786b;
+      --group: #262420;
     }
   }
   * { box-sizing: border-box; }
-  [hidden] { display: none !important; }  /* otherwise rules like .spool { display: grid } win */
+  [hidden] { display: none !important; }  /* otherwise rules that set display win */
   body { font: 15px/1.4 system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; }
   button, input, select { font: inherit; color: inherit; }
   button {
@@ -31,6 +33,7 @@
     background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
   }
   input[type=checkbox] { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 
   header {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
@@ -50,7 +53,6 @@
   .printer.busy .dot { background: var(--warn); }
   #btStatus { margin-right: auto; }
   #btStatus small { color: var(--muted); }
-  .primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 
   dialog#settings {
     width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
@@ -96,40 +98,49 @@
   .spacer { margin-left: auto; }
 
   main { display: flex; align-items: flex-start; }
-  #tree { flex: 1; min-width: 0; padding: 8px 16px 40px; }
-  .empty-state { color: var(--muted); padding: 24px 0; }
-
-  details.filament { border-bottom: 1px solid var(--line); }
-  details.filament > summary {
-    display: flex; align-items: center; gap: 10px; padding: 8px 4px; cursor: pointer; list-style: none;
+  .table-wrap { flex: 1; min-width: 0; padding: 0 16px 40px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle;
+    white-space: nowrap;
   }
-  details.filament > summary::-webkit-details-marker { display: none; }
-  details.filament > summary::before {
-    content: "▸"; color: var(--muted); width: 10px; transition: transform .15s;
+  /* Long text shortens with an ellipsis; these shares split the spare width. */
+  td.clip { max-width: 1px; overflow: hidden; text-overflow: ellipsis; }
+  td.c-colour { width: 34%; }
+  td.c-mat { width: 20%; }
+  td.c-loc { width: 22%; }
+  thead th {
+    position: sticky; top: 0; z-index: 2; background: var(--bg); font-size: .85rem; color: var(--muted);
+    font-weight: 600; white-space: nowrap; user-select: none;
   }
-  details.filament[open] > summary::before { transform: rotate(90deg); }
+  thead th.sortable { cursor: pointer; }
+  thead th.sortable:hover { color: var(--ink); }
+  thead th.sorted { color: var(--ink); }
+  thead th .arrow { display: inline-block; width: 1em; text-align: center; }
+  td.sel, th.sel { width: 32px; }
+  td.sw, th.sw { width: 36px; padding-right: 0; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .code { font-family: var(--mono); font-size: .88rem; }
+  .muted { color: var(--muted); }
+  .nowrap { white-space: nowrap; }
+  tbody tr.spool { cursor: pointer; }
+  tbody tr.spool:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+  tbody tr.spool.previewing { background: var(--accent-soft); }
+  tbody tr.spool.spent td:not(.sel) { color: var(--muted); }
+  tbody tr.group td { background: var(--group); font-weight: 600; cursor: pointer; }
+  tbody tr.group .twisty { display: inline-block; width: 1em; color: var(--muted); }
+  tbody tr.group small { font-weight: normal; color: var(--muted); margin-left: 6px; }
+  tbody tr.group .gswatch { display: inline-block; vertical-align: -4px; margin-right: 8px; }
+  tbody tr.spool td.first-in-group { padding-left: 8px; }
+  td button { padding: 2px 8px; font-size: .85rem; }
   .swatch {
-    width: 22px; height: 22px; border-radius: 50%; flex: none;
+    display: block; width: 20px; height: 20px; border-radius: 50%;
     border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
   }
-  .fname { min-width: 0; }
-  .fname small { color: var(--muted); }
-  .count { margin-left: auto; color: var(--muted); font-size: .85rem; white-space: nowrap; }
-
-  .spool {
-    display: grid; grid-template-columns: 17px 7.5em 1fr 5em auto; align-items: center; gap: 10px;
-    padding: 5px 4px 5px 56px; cursor: pointer; border-radius: 6px;
-  }
-  .spool:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
-  .spool.previewing { background: var(--accent-soft); }
-  .code { font-family: var(--mono); font-size: .9rem; }
-  .loc { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .grams { text-align: right; font-variant-numeric: tabular-nums; }
-  .grams.zero { color: var(--muted); }
-  .spool button { padding: 2px 8px; font-size: .85rem; }
+  .empty-state { color: var(--muted); padding: 24px 8px; }
 
   #preview {
-    position: sticky; top: 12px; width: 440px; flex: none; margin: 12px 16px 0 0; padding: 14px;
+    position: sticky; top: 12px; width: 390px; flex: none; margin: 12px 16px 0 0; padding: 14px;
     background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   }
   #preview h2 { font-size: 1rem; margin: 0 0 2px; font-family: var(--mono); }
@@ -149,6 +160,9 @@
   }
   #pvProgress { color: var(--muted); font-size: .85rem; margin-top: 6px; min-height: 1.2em; }
 
+  @media (max-width: 1100px) {
+    .c-loc { display: none; }
+  }
   @media (max-width: 900px) {
     #preview {
       position: fixed; top: auto; left: 0; right: 0; bottom: 0; width: auto; margin: 0;
@@ -156,9 +170,13 @@
     }
     .label-box { max-width: 400px; margin: 0 auto; }
   }
-  @media (max-width: 560px) {
-    .spool { grid-template-columns: 17px 7em 1fr auto; padding-left: 28px; }
-    .spool .loc { display: none; }
+  .btn-short { display: none; }
+  @media (max-width: 700px) {
+    .c-brand, .c-date, .c-code { display: none; }
+    .table-wrap { padding: 0 4px 40px; }
+    th, td { padding: 6px 4px; }
+    .btn-long { display: none; }
+    .btn-short { display: inline; }
   }
 </style>
 </head>
@@ -203,7 +221,9 @@
   </section>
 
   <section>
-    <h3>Printer <small>(saved in this browser)</small></h3>
+    <h3>Printer: <span id="profileName"></span></h3>
+    <p class="hint">Saved on the server for each printer, and picked automatically when that printer
+      connects. Changes save as you make them. <span id="printerSaveStatus"></span></p>
     <div class="fields">
       <label>Density
         <select id="optDensity"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
@@ -235,6 +255,13 @@
 <div class="toolbar">
   <input id="search" type="search" placeholder="Search brand, material, colour, location or code" autocomplete="off">
   <select id="location" aria-label="Location"><option value="">All locations</option></select>
+  <label>Group by
+    <select id="groupBy">
+      <option value="none">None</option>
+      <option value="filament">Filament</option>
+      <option value="material">Material</option>
+    </select>
+  </label>
   <label><input type="checkbox" id="hideEmpty" checked> Hide empty</label>
 </div>
 
@@ -248,7 +275,12 @@
 </div>
 
 <main>
-  <div id="tree"><p class="empty-state">Loading spools…</p></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr id="headRow"></tr></thead>
+      <tbody id="rows"><tr><td class="empty-state" colspan="10">Loading spools…</td></tr></tbody>
+    </table>
+  </div>
   <aside id="preview" hidden>
     <h2 id="pvCode"></h2>
     <div class="sub" id="pvSub"></div>
@@ -271,11 +303,17 @@
 const $ = (id) => document.getElementById(id);
 
 const state = {
-  filaments: [],          // from /api/spools, each with .el, .cb, .countEl and spools with .el, .cb
-  byCode: new Map(),      // short_code -> { spool, filament }
-  selected: new Set(),    // short codes, kept across filtering and refreshes
+  spools: [],             // flat list from /api/spools
+  byCode: new Map(),      // short_code -> spool
+  selected: new Set(),    // short codes, kept across filtering, sorting and refreshes
+  collapsed: new Set(),   // group keys the user has collapsed
+  shown: [],              // spools currently passing the filters, in display order
+  rowChecks: new Map(),   // short_code -> row checkbox
+  groupChecks: [],        // [{ cb, codes }]
   previewCode: null,
   previewUrl: null,       // object URL of the label being previewed
+  previewBlob: null,
+  rasterReady: false,
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -299,6 +337,21 @@ async function apiJson(path) {
   return body;
 }
 
+async function apiSend(method, path, body) {
+  const r = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(data?.error?.message || `Server returned HTTP ${r.status}.`);
+  return data;
+}
+
+function readLocal(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+
+function writeLocal(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private window */ }
+}
+
 function showError(message) {
   $("error").textContent = message || "";
   $("error").hidden = !message;
@@ -309,8 +362,38 @@ function formatTime(iso) {
   return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-function filamentName(f) {
-  return [f.material, f.material_type].filter(Boolean).join(" ");
+function formatDate(ymd) {
+  if (!ymd) return "";
+  const d = new Date(`${ymd}T00:00:00`);
+  return isNaN(d) ? ymd : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function materialName(s) {
+  return [s.material, s.material_type].filter(Boolean).join(" ");
+}
+
+function isSpent(s) {
+  return !s.remaining_grams;
+}
+
+/**
+ * Sort key that orders colours like a rainbow, with neutrals (black, greys,
+ * white) after them from dark to light.
+ */
+function hueKey(rgb) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(rgb || "");
+  if (!m) return [2, 0, 0];
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const l = (max + min) / 2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (s < 0.15 || l < 0.08 || l > 0.94) return [1, l, 0];
+  let h;
+  if (max === r) h = ((g - b) / d + 6) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return [0, h * 60, l];
 }
 
 // ── status ───────────────────────────────────────────────────────────────────
@@ -334,83 +417,191 @@ async function loadStatus() {
   }
 }
 
-// ── spools ───────────────────────────────────────────────────────────────────
+// ── view preferences (this browser only) ─────────────────────────────────────
 
-async function loadSpools(refresh = false) {
-  $("refresh").disabled = true;
-  try {
-    const data = await apiJson("/api/spools" + (refresh ? "?refresh=true" : ""));
-    state.filaments = data.filaments;
-    showError("");
-    renderTree();
-  } catch (e) {
-    showError(e.message);
-    if (!state.filaments.length) $("tree").replaceChildren(el("p", { class: "empty-state" }, "No spools loaded."));
-  } finally {
-    $("refresh").disabled = false;
-    loadStatus();
+const VIEW_KEY = "niimbatch.view";
+const view = { sort: "purchase_date", dir: -1, group: "none", hideEmpty: true, ...readLocal(VIEW_KEY, {}) };
+
+function saveView() {
+  writeLocal(VIEW_KEY, { sort: view.sort, dir: view.dir, group: view.group, hideEmpty: view.hideEmpty });
+}
+
+// ── table ────────────────────────────────────────────────────────────────────
+
+const COLUMNS = [
+  { key: "hue", label: "", title: "Sort by colour (hue)", cls: "sw" },
+  { key: "color", label: "Colour" },
+  { key: "brand", label: "Brand", cls: "c-brand" },
+  { key: "material", label: "Material" },
+  { key: "short_code", label: "Code", cls: "c-code" },
+  { key: "location", label: "Location", cls: "c-loc" },
+  { key: "remaining_grams", label: "Left", cls: "num", firstDir: -1 },
+  { key: "purchase_date", label: "Purchased", cls: "c-date", firstDir: -1 },
+];
+const COLSPAN = COLUMNS.length + 2; // + select column + preview column
+
+function sortValue(s, key) {
+  switch (key) {
+    case "hue": return s._hue;
+    case "material": return materialName(s).toLowerCase() || null;
+    case "remaining_grams": return s.remaining_grams ?? null;
+    default: return s[key] ? String(s[key]).toLowerCase() : null;
   }
 }
 
-function renderTree() {
-  state.byCode.clear();
-  const openIds = new Set(
-    [...document.querySelectorAll("details.filament[open]")].map((d) => d.dataset.fid)
+function compareValues(a, b) {
+  if (Array.isArray(a)) {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+    return 0;
+  }
+  if (typeof a === "number") return a - b;
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
+const TIE_BREAK = ["brand", "material", "color", "short_code"];
+
+function compareSpools(a, b) {
+  const va = sortValue(a, view.sort), vb = sortValue(b, view.sort);
+  // Missing values (no purchase date, say) go last whichever way we sort.
+  if (va === null || vb === null) {
+    if (va !== vb) return va === null ? 1 : -1;
+  } else {
+    const c = compareValues(va, vb);
+    if (c) return c * view.dir;
+  }
+  for (const key of TIE_BREAK) {
+    const c = compareValues(sortValue(a, key) || "", sortValue(b, key) || "");
+    if (c) return c;
+  }
+  return 0;
+}
+
+function renderHead() {
+  const cells = [el("th", { class: "sel" })];
+  for (const col of COLUMNS) {
+    const sorted = view.sort === col.key;
+    const th = el("th", {
+      class: ["sortable", col.cls, sorted ? "sorted" : ""].filter(Boolean).join(" "),
+      title: col.title || `Sort by ${col.label.toLowerCase()}`,
+    }, col.key === "hue" ? "●" : col.label,
+      el("span", { class: "arrow" }, sorted ? (view.dir > 0 ? "▲" : "▼") : ""));
+    th.addEventListener("click", () => {
+      if (view.sort === col.key) view.dir = -view.dir;
+      else { view.sort = col.key; view.dir = col.firstDir || 1; }
+      saveView();
+      renderHead();
+      render();
+    });
+    cells.push(th);
+  }
+  cells.push(el("th"));
+  $("headRow").replaceChildren(...cells);
+}
+
+function spoolMatches(s, query, location) {
+  if (view.hideEmpty && isSpent(s)) return false;
+  if (location && (s.location || "") !== location) return false;
+  return !query || s._search.includes(query);
+}
+
+function groupOf(s) {
+  if (view.group === "filament") return { key: `f${s.filament_id}`, spool: s, kind: "filament" };
+  if (view.group === "material") return { key: `m${materialName(s)}`, spool: s, kind: "material" };
+  return null;
+}
+
+function spoolRow(s) {
+  const cb = el("input", { type: "checkbox", checked: state.selected.has(s.short_code), "aria-label": `Select ${s.short_code}` });
+  cb.addEventListener("click", (e) => e.stopPropagation());
+  cb.addEventListener("change", () => setSelected([s.short_code], cb.checked));
+  state.rowChecks.set(s.short_code, cb);
+
+  const previewBtn = el("button", { type: "button", title: "Preview label" },
+    el("span", { class: "btn-long" }, "Preview"), el("span", { class: "btn-short" }, "View"));
+  previewBtn.addEventListener("click", (e) => { e.stopPropagation(); showPreview(s.short_code); });
+
+  const tr = el("tr", { class: "spool" + (isSpent(s) ? " spent" : "") + (s.short_code === state.previewCode ? " previewing" : "") },
+    el("td", { class: "sel" }, cb),
+    el("td", { class: "sw" }, el("span", { class: "swatch", style: `background:${s.rgb || "transparent"}`, title: s.rgb || "" })),
+    el("td", { class: "clip c-colour", title: s.color || "" }, s.color || "—"),
+    el("td", { class: "c-brand" }, s.brand || ""),
+    el("td", { class: "clip c-mat", title: materialName(s) }, materialName(s)),
+    el("td", { class: "code c-code" }, s.short_code),
+    el("td", { class: "c-loc muted clip", title: s.location || "" }, s.location || "—"),
+    el("td", { class: "num nowrap" }, `${s.remaining_grams ?? "?"} g`),
+    el("td", { class: "c-date nowrap muted" }, formatDate(s.purchase_date)),
+    el("td", {}, previewBtn),
   );
+  tr.dataset.code = s.short_code;
+  tr.addEventListener("click", () => setSelected([s.short_code], !state.selected.has(s.short_code)));
+  return tr;
+}
+
+function groupRow(group, spools) {
+  const codes = spools.map((s) => s.short_code);
+  const cb = el("input", { type: "checkbox", "aria-label": "Select this group" });
+  cb.addEventListener("click", (e) => e.stopPropagation());
+  cb.addEventListener("change", () => setSelected(codes, cb.checked));
+  state.groupChecks.push({ cb, codes });
+
+  const first = group.spool;
+  const collapsed = state.collapsed.has(group.key);
+  const title = group.kind === "filament"
+    ? [el("span", { class: "swatch gswatch", style: `background:${first.rgb || "transparent"}` }),
+       first.color || "Unknown colour", el("small", {}, `${first.brand} · ${materialName(first)}`)]
+    : [materialName(first) || "Unknown material"];
+
+  const tr = el("tr", { class: "group" },
+    el("td", { class: "sel" }, cb),
+    el("td", { colSpan: COLSPAN - 1 },
+      el("span", { class: "twisty" }, collapsed ? "▸" : "▾"), ...title,
+      el("small", {}, `${spools.length} spool${spools.length === 1 ? "" : "s"}`)),
+  );
+  tr.addEventListener("click", () => {
+    if (collapsed) state.collapsed.delete(group.key); else state.collapsed.add(group.key);
+    render();
+  });
+  return tr;
+}
+
+function render() {
+  const query = $("search").value.trim().toLowerCase();
+  const location = $("location").value;
+  state.shown = state.spools.filter((s) => spoolMatches(s, query, location)).sort(compareSpools);
+  state.rowChecks.clear();
+  state.groupChecks = [];
 
   const frag = document.createDocumentFragment();
-  for (const f of state.filaments) {
-    f.cb = el("input", { type: "checkbox", title: "Select the shown spools of this filament" });
-    f.cb.addEventListener("click", (e) => e.stopPropagation());
-    f.cb.addEventListener("change", () => toggleFilament(f, f.cb.checked));
-    f.countEl = el("span", { class: "count" });
-    f.searchText = [f.brand, f.material, f.material_type, f.color].join(" ").toLowerCase();
-
-    const summary = el("summary", {},
-      f.cb,
-      el("span", { class: "swatch", style: `background:${f.rgb || "transparent"}` }),
-      el("span", { class: "fname" }, el("strong", {}, f.color || "Unknown colour"), " ",
-        el("small", {}, `${f.brand} · ${filamentName(f)}`)),
-      f.countEl,
-    );
-    f.el = el("details", { class: "filament" }, summary);
-    f.el.dataset.fid = String(f.filament_id);
-    if (openIds.has(f.el.dataset.fid)) f.el.open = true;
-
-    for (const s of f.spools) {
-      state.byCode.set(s.short_code, { spool: s, filament: f });
-      s.searchText = [s.short_code, s.location].join(" ").toLowerCase();
-      s.cb = el("input", { type: "checkbox", checked: state.selected.has(s.short_code) });
-      s.cb.addEventListener("click", (e) => e.stopPropagation());
-      s.cb.addEventListener("change", () => setSelected(s.short_code, s.cb.checked));
-      const previewBtn = el("button", { type: "button", textContent: "Preview" });
-      previewBtn.addEventListener("click", (e) => { e.stopPropagation(); showPreview(s.short_code); });
-      s.el = el("div", { class: "spool" },
-        s.cb,
-        el("span", { class: "code" }, s.short_code),
-        el("span", { class: "loc", title: s.location || "" }, s.location || "—"),
-        el("span", { class: "grams" + (s.remaining_grams ? "" : " zero") }, `${s.remaining_grams ?? "?"} g`),
-        previewBtn,
-      );
-      s.el.addEventListener("click", () => { s.cb.checked = !s.cb.checked; setSelected(s.short_code, s.cb.checked); });
-      f.el.append(s.el);
+  if (!state.shown.length) {
+    frag.append(el("tr", {}, el("td", { class: "empty-state", colSpan: COLSPAN },
+      state.spools.length ? "No spools match." : "No spools loaded.")));
+  } else if (view.group === "none") {
+    for (const s of state.shown) frag.append(spoolRow(s));
+  } else {
+    // Groups appear in the order of their first spool under the current sort.
+    const groups = new Map();
+    for (const s of state.shown) {
+      const g = groupOf(s);
+      if (!groups.has(g.key)) groups.set(g.key, { group: g, spools: [] });
+      groups.get(g.key).spools.push(s);
     }
-    frag.append(f.el);
+    for (const { group, spools } of groups.values()) {
+      frag.append(groupRow(group, spools));
+      if (!state.collapsed.has(group.key)) for (const s of spools) frag.append(spoolRow(s));
+    }
   }
-  $("tree").replaceChildren(frag);
+  $("rows").replaceChildren(frag);
 
-  // Drop selections for spools that no longer exist.
-  for (const code of state.selected) if (!state.byCode.has(code)) state.selected.delete(code);
-
-  renderLocations();
-  applyFilter();
+  const grouped = view.group !== "none";
+  $("expandAll").hidden = $("collapseAll").hidden = !grouped;
+  updateSelectionUi();
 }
 
 function renderLocations() {
   const select = $("location");
   const current = select.value;
   const counts = new Map();
-  for (const f of state.filaments) for (const s of f.spools) {
+  for (const s of state.spools) {
     const loc = s.location || "";
     counts.set(loc, (counts.get(loc) || 0) + 1);
   }
@@ -422,78 +613,58 @@ function renderLocations() {
   select.value = counts.has(current) ? current : "";
 }
 
-// ── filtering & selection ────────────────────────────────────────────────────
+// ── selection ────────────────────────────────────────────────────────────────
 
-function spoolVisible(s, f, query, location, hideEmpty) {
-  if (hideEmpty && !s.remaining_grams) return false;
-  if (location && (s.location || "") !== location) return false;
-  return !query || f.searchText.includes(query) || s.searchText.includes(query);
-}
-
-function applyFilter() {
-  const query = $("search").value.trim().toLowerCase();
-  const location = $("location").value;
-  const hideEmpty = $("hideEmpty").checked;
-  let shownFilaments = 0;
-
-  for (const f of state.filaments) {
-    f.visibleSpools = [];
-    for (const s of f.spools) {
-      const visible = spoolVisible(s, f, query, location, hideEmpty);
-      s.el.hidden = !visible;
-      if (visible) f.visibleSpools.push(s);
-    }
-    f.el.hidden = f.visibleSpools.length === 0;
-    if (!f.el.hidden) shownFilaments++;
-    const n = f.visibleSpools.length, total = f.spools.length;
-    f.countEl.textContent = n === total ? `${total} spool${total === 1 ? "" : "s"}` : `${n} of ${total} spools`;
-    // Searching or filtering by location opens matches so the spools are visible.
-    if ((query || location) && !f.el.hidden) f.el.open = true;
+function setSelected(codes, on) {
+  for (const code of codes) {
+    if (on) state.selected.add(code); else state.selected.delete(code);
   }
-
-  if (!shownFilaments) {
-    if (!$("tree").querySelector(".empty-state")) {
-      $("tree").append(el("p", { class: "empty-state" }, "No spools match."));
-    }
-  } else {
-    $("tree").querySelector(".empty-state")?.remove();
-  }
-  updateChecks();
+  updateSelectionUi();
 }
 
-function setSelected(code, on) {
-  if (on) state.selected.add(code); else state.selected.delete(code);
-  updateChecks();
-}
-
-function toggleFilament(f, on) {
-  for (const s of f.visibleSpools) setSelectedQuiet(s, on);
-  updateChecks();
-}
-
-function setSelectedQuiet(s, on) {
-  if (on) state.selected.add(s.short_code); else state.selected.delete(s.short_code);
-  s.cb.checked = on;
-}
-
-function updateChecks() {
-  for (const f of state.filaments) {
-    const visible = f.visibleSpools || [];
-    const selVisible = visible.filter((s) => state.selected.has(s.short_code)).length;
-    const selAny = f.spools.some((s) => state.selected.has(s.short_code));
-    f.cb.checked = visible.length > 0 && selVisible === visible.length;
-    f.cb.indeterminate = !f.cb.checked && selAny;
-    for (const s of f.spools) s.cb.checked = state.selected.has(s.short_code);
+function updateSelectionUi() {
+  for (const [code, cb] of state.rowChecks) cb.checked = state.selected.has(code);
+  for (const { cb, codes } of state.groupChecks) {
+    const n = codes.filter((c) => state.selected.has(c)).length;
+    cb.checked = n > 0 && n === codes.length;
+    cb.indeterminate = n > 0 && n < codes.length;
   }
   const n = state.selected.size;
   $("selCount").textContent = `${n} selected`;
   $("clearSel").disabled = n === 0;
 }
 
+// ── spools ───────────────────────────────────────────────────────────────────
+
+async function loadSpools(refresh = false) {
+  $("refresh").disabled = true;
+  try {
+    const data = await apiJson("/api/spools" + (refresh ? "?refresh=true" : ""));
+    state.spools = data.spools;
+    state.byCode = new Map(state.spools.map((s) => [s.short_code, s]));
+    for (const s of state.spools) {
+      s._hue = hueKey(s.rgb);
+      s._search = [s.brand, s.material, s.material_type, s.color, s.short_code, s.location]
+        .filter(Boolean).join(" ").toLowerCase();
+    }
+    // Drop selections for spools that no longer exist.
+    for (const code of state.selected) if (!state.byCode.has(code)) state.selected.delete(code);
+    showError("");
+    renderLocations();
+    render();
+  } catch (e) {
+    showError(e.message);
+    render();
+  } finally {
+    $("refresh").disabled = false;
+    loadStatus();
+  }
+}
+
 // ── label rasterising ────────────────────────────────────────────────────────
 
 // Classic label is 40 x 30 mm; the B1 prints 203 dpi, i.e. 8 dots per mm.
-const LABEL_W = 320, LABEL_H = 240;
+const LABEL_W = 320, LABEL_H = 240, DOTS_PER_MM = 8;
 
 function loadImage(url) {
   return new Promise((resolve, reject) => {
@@ -503,8 +674,6 @@ function loadImage(url) {
     img.src = url;
   });
 }
-
-const DOTS_PER_MM = 8;
 
 /**
  * Paint a label onto `canvas` at printer resolution, as pure black and white.
@@ -518,11 +687,11 @@ function drawLabel(canvas, paint) {
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, LABEL_W, LABEL_H);
   ctx.save();
-  if (settings.flip) {
+  if (printerSettings.flip) {
     ctx.translate(LABEL_W, LABEL_H);
     ctx.rotate(Math.PI);
   }
-  ctx.translate(Math.round(settings.offsetX * DOTS_PER_MM), Math.round(settings.offsetY * DOTS_PER_MM));
+  ctx.translate(Math.round(printerSettings.offset_x * DOTS_PER_MM), Math.round(printerSettings.offset_y * DOTS_PER_MM));
   paint(ctx);
   ctx.restore();
 
@@ -580,8 +749,8 @@ function paintCalibration(ctx) {
   ctx.font = "bold 18px sans-serif";
   ctx.fillText("NiimBatch calibration", W / 2, 52);
   ctx.font = "bold 15px sans-serif";
-  ctx.fillText(`Offset X ${formatMm(settings.offsetX)} mm   Y ${formatMm(settings.offsetY)} mm`, W / 2, 182);
-  ctx.fillText(`Density ${settings.density}${settings.flip ? " · rotated 180°" : ""}`, W / 2, 202);
+  ctx.fillText(`Offset X ${formatMm(printerSettings.offset_x)} mm   Y ${formatMm(printerSettings.offset_y)} mm`, W / 2, 182);
+  ctx.fillText(`Density ${printerSettings.density}${printerSettings.flip ? " · rotated 180°" : ""}`, W / 2, 202);
   // An arrow showing which way is "up" when reading, to tell rotation apart.
   ctx.beginPath();
   ctx.moveTo(40, 100); ctx.lineTo(32, 112); ctx.lineTo(48, 112); ctx.closePath();
@@ -593,25 +762,97 @@ function renderCalibration() {
   drawLabel($("calCanvas"), paintCalibration);
 }
 
-// ── printer ──────────────────────────────────────────────────────────────────
+// ── printer settings (server, one set per printer) ───────────────────────────
 
-const SETTINGS_KEY = "niimbatch.print";
-const DEFAULT_SETTINGS = { density: "3", direction: "top", flip: false, offsetX: 0, offsetY: 0 };
-const settings = loadSettings();
+const DEFAULT_PRINTER_SETTINGS = { density: 3, direction: "top", flip: false, offset_x: 0, offset_y: 0 };
+const LAST_PRINTER_KEY = "niimbatch.lastPrinter";
+const LEGACY_PRINT_KEY = "niimbatch.print"; // printer settings were kept in the browser before
+let printerSettings = { ...DEFAULT_PRINTER_SETTINGS };
+let printerProfile = readLocal(LAST_PRINTER_KEY, "default");
+let printerProfileSaved = false;
 
-function loadSettings() {
+function profileNameFor(deviceName) {
+  const clean = (deviceName || "").replace(/[^A-Za-z0-9 _.:-]/g, "_").slice(0, 64);
+  return clean || "default";
+}
+
+function fillPrinterForm() {
+  $("profileName").textContent = printerProfile === "default" ? "default (no printer connected yet)" : printerProfile;
+  $("optDensity").value = String(printerSettings.density);
+  $("optDirection").value = printerSettings.direction;
+  $("optFlip").checked = printerSettings.flip;
+  $("optOffsetX").value = String(printerSettings.offset_x);
+  $("optOffsetY").value = String(printerSettings.offset_y);
+}
+
+function legacyPrinterSettings() {
+  const old = readLocal(LEGACY_PRINT_KEY, null);
+  if (!old) return null;
+  return {
+    density: Number(old.density) || 3,
+    direction: old.direction === "left" ? "left" : "top",
+    flip: !!old.flip,
+    offset_x: Number(old.offsetX) || 0,
+    offset_y: Number(old.offsetY) || 0,
+  };
+}
+
+/**
+ * Load a printer's settings. A printer seen for the first time inherits the
+ * settings currently shown (or ones kept in this browser by an older version).
+ */
+async function loadPrinterProfile(name) {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
+    const r = await apiJson(`/api/printers/${encodeURIComponent(name)}`);
+    if (r.saved) {
+      printerSettings = r.settings;
+      printerProfileSaved = true;
+    } else {
+      const inherited = legacyPrinterSettings() || (name !== "default" ? { ...printerSettings } : null);
+      printerSettings = inherited || r.settings;
+      printerProfileSaved = false;
+      printerProfile = name;
+      if (inherited) await savePrinterSettings();
+    }
+    printerProfile = name;
+    writeLocal(LAST_PRINTER_KEY, name);
+  } catch (e) {
+    $("printerSaveStatus").textContent = `Could not load printer settings: ${e.message}`;
+  }
+  fillPrinterForm();
+  await printSettingsChanged(false);
+}
+
+async function savePrinterSettings() {
+  const status = $("printerSaveStatus");
+  try {
+    const r = await apiSend("PUT", `/api/printers/${encodeURIComponent(printerProfile)}`, printerSettings);
+    printerSettings = r.settings;
+    printerProfileSaved = true;
+    try { localStorage.removeItem(LEGACY_PRINT_KEY); } catch { /* ignore */ }
+    status.textContent = "Saved.";
+  } catch (e) {
+    status.textContent = `Not saved: ${e.message}`;
   }
 }
 
-function saveSettings() {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private window */ }
+function readOffset(input) {
+  const v = Math.max(-5, Math.min(5, Number(input.value) || 0));
+  const snapped = Math.round(v * DOTS_PER_MM) / DOTS_PER_MM;
+  input.value = String(snapped);
+  return snapped;
 }
 
-const printer = { client: null, deviceName: "", model: "", task: "B1", battery: null, busy: false, connecting: false };
+/** Re-render everything drawn with the printer settings, and save them. */
+async function printSettingsChanged(save = true) {
+  if (save) savePrinterSettings();
+  renderCalibration();
+  if (state.previewBlob && state.previewCode) await rasterise(state.previewBlob, $("pvRaster"));
+}
+
+// ── printer connection & printing ────────────────────────────────────────────
+
+const printer = { client: null, deviceName: "", model: "", task: "B1", battery: null, busy: false, connecting: false, statusEl: null };
 const bluetoothUsable = "bluetooth" in navigator && window.isSecureContext && typeof niimbluelib !== "undefined";
 
 function updatePrinterUi() {
@@ -675,6 +916,7 @@ async function toggleConnection() {
     printer.model = client.getModelMetadata()?.model || "";
     printer.task = client.getPrintTaskType() || "B1";
     showError("");
+    await loadPrinterProfile(profileNameFor(printer.deviceName));
   } catch (e) {
     // Closing the browser's device picker is not an error worth shouting about.
     if (!/cancel/i.test(e?.message || "")) showError(`Could not connect to the printer: ${e?.message || e}`);
@@ -690,7 +932,7 @@ async function printCanvases(canvases, statusEl) {
   const { ImageEncoder, PageColorType, LabelType } = niimbluelib;
   const task = printer.client.protocol.newPrintTask(printer.task, {
     totalPages: canvases.length,
-    density: Number(settings.density),
+    density: Number(printerSettings.density),
     labelType: LabelType.WithGaps,
     pageColor: PageColorType.SingleColor,
     statusPollIntervalMs: 100,
@@ -701,7 +943,7 @@ async function printCanvases(canvases, statusEl) {
   try {
     await task.printInit();
     for (const canvas of canvases) {
-      const encoded = ImageEncoder.encodeCanvas(canvas, PageColorType.SingleColor, settings.direction);
+      const encoded = ImageEncoder.encodeCanvas(canvas, PageColorType.SingleColor, printerSettings.direction);
       await task.printPage(encoded, 1);
       await task.waitForPageFinished();
     }
@@ -741,16 +983,9 @@ async function printCalibration() {
   }
 }
 
-// ── settings ─────────────────────────────────────────────────────────────────
+// ── label content settings (server, shared) ──────────────────────────────────
 
 let labelDefaults = null;
-
-async function apiSend(method, path, body) {
-  const r = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(data?.error?.message || `Server returned HTTP ${r.status}.`);
-  return data;
-}
 
 /** The colour area is one dropdown in the UI but three API parameters. */
 function colorAreaValue(l) {
@@ -813,33 +1048,23 @@ async function saveLabelSettings() {
   }
 }
 
-function readOffset(input) {
-  const v = Math.max(-5, Math.min(5, Number(input.value) || 0));
-  const snapped = Math.round(v * DOTS_PER_MM) / DOTS_PER_MM;
-  input.value = String(snapped);
-  return snapped;
-}
-
-/** Re-render everything drawn with the printer settings. */
-async function printSettingsChanged() {
-  saveSettings();
-  renderCalibration();
-  if (state.previewBlob && state.previewCode) await rasterise(state.previewBlob, $("pvRaster"));
-}
-
 // ── preview ──────────────────────────────────────────────────────────────────
 
-async function showPreview(code) {
-  const entry = state.byCode.get(code);
-  if (!entry) return;
-  const { spool: s, filament: f } = entry;
+function markPreviewRow() {
+  for (const tr of document.querySelectorAll("tr.spool.previewing")) tr.classList.remove("previewing");
+  if (state.previewCode) {
+    document.querySelector(`tr.spool[data-code="${CSS.escape(state.previewCode)}"]`)?.classList.add("previewing");
+  }
+}
 
-  document.querySelector(".spool.previewing")?.classList.remove("previewing");
-  s.el.classList.add("previewing");
+async function showPreview(code) {
+  const s = state.byCode.get(code);
+  if (!s) return;
   state.previewCode = code;
+  markPreviewRow();
 
   $("pvCode").textContent = code;
-  $("pvSub").textContent = `${f.brand} ${filamentName(f)} · ${f.color} · ${s.location || "no location"} · ${s.remaining_grams} g`;
+  $("pvSub").textContent = `${s.brand} ${materialName(s)} · ${s.color} · ${s.location || "no location"} · ${s.remaining_grams} g`;
   $("pvLink").href = s.spool_url;
   const box = $("pvBox");
   box.className = "label-box";
@@ -879,26 +1104,30 @@ async function showPreview(code) {
 
 function closePreview() {
   $("preview").hidden = true;
-  document.querySelector(".spool.previewing")?.classList.remove("previewing");
   state.previewCode = null;
+  markPreviewRow();
 }
 
 // ── wiring ───────────────────────────────────────────────────────────────────
 
 $("refresh").addEventListener("click", () => loadSpools(true));
-$("search").addEventListener("input", applyFilter);
-$("location").addEventListener("change", applyFilter);
-$("hideEmpty").addEventListener("change", applyFilter);
-$("selectShown").addEventListener("click", () => {
-  for (const f of state.filaments) for (const s of f.visibleSpools || []) setSelectedQuiet(s, true);
-  updateChecks();
+$("search").addEventListener("input", render);
+$("location").addEventListener("change", render);
+$("groupBy").value = view.group;
+$("groupBy").addEventListener("change", (e) => { view.group = e.target.value; state.collapsed.clear(); saveView(); render(); });
+$("hideEmpty").checked = view.hideEmpty;
+$("hideEmpty").addEventListener("change", (e) => { view.hideEmpty = e.target.checked; saveView(); render(); });
+$("selectShown").addEventListener("click", () => setSelected(state.shown.map((s) => s.short_code), true));
+$("clearSel").addEventListener("click", () => { state.selected.clear(); updateSelectionUi(); });
+$("expandAll").addEventListener("click", () => { state.collapsed.clear(); render(); });
+$("collapseAll").addEventListener("click", () => {
+  for (const s of state.shown) state.collapsed.add(groupOf(s).key);
+  render();
 });
-$("clearSel").addEventListener("click", () => { state.selected.clear(); updateChecks(); });
-$("expandAll").addEventListener("click", () => state.filaments.forEach((f) => { if (!f.el.hidden) f.el.open = true; }));
-$("collapseAll").addEventListener("click", () => state.filaments.forEach((f) => { f.el.open = false; }));
 $("pvClose").addEventListener("click", closePreview);
 $("pvPrint").addEventListener("click", printPreviewed);
 $("connect").addEventListener("click", toggleConnection);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("settings").open) closePreview(); });
 
 $("openSettings").addEventListener("click", () => { renderCalibration(); $("settings").showModal(); });
 $("closeSettings").addEventListener("click", () => $("settings").close());
@@ -909,21 +1138,16 @@ $("resetLabel").addEventListener("click", () => {
 });
 $("printCal").addEventListener("click", printCalibration);
 
-$("optDensity").value = settings.density;
-$("optDirection").value = settings.direction;
-$("optFlip").checked = settings.flip;
-$("optOffsetX").value = String(settings.offsetX);
-$("optOffsetY").value = String(settings.offsetY);
-$("optDensity").addEventListener("change", (e) => { settings.density = e.target.value; printSettingsChanged(); });
-$("optDirection").addEventListener("change", (e) => { settings.direction = e.target.value; saveSettings(); });
-$("optFlip").addEventListener("change", (e) => { settings.flip = e.target.checked; printSettingsChanged(); });
-$("optOffsetX").addEventListener("change", (e) => { settings.offsetX = readOffset(e.target); printSettingsChanged(); });
-$("optOffsetY").addEventListener("change", (e) => { settings.offsetY = readOffset(e.target); printSettingsChanged(); });
+$("optDensity").addEventListener("change", (e) => { printerSettings.density = Number(e.target.value); printSettingsChanged(); });
+$("optDirection").addEventListener("change", (e) => { printerSettings.direction = e.target.value; printSettingsChanged(); });
+$("optFlip").addEventListener("change", (e) => { printerSettings.flip = e.target.checked; printSettingsChanged(); });
+$("optOffsetX").addEventListener("change", (e) => { printerSettings.offset_x = readOffset(e.target); printSettingsChanged(); });
+$("optOffsetY").addEventListener("change", (e) => { printerSettings.offset_y = readOffset(e.target); printSettingsChanged(); });
 
+renderHead();
 updatePrinterUi();
 loadLabelSettings();
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePreview(); });
-
+loadPrinterProfile(printerProfile);
 loadSpools();
 </script>
 </body>

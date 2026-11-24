@@ -173,17 +173,14 @@ async def load_spools(refresh: bool = False) -> dict:
     return cached
 
 
-def build_tree(spools: list[dict]) -> list[dict]:
-    """Group spools under their filament, sorted by brand, material, type and colour."""
-    groups: dict = {}
-    for s in spools:
-        fid = s.get("filament_id")
-        if fid not in groups:
-            groups[fid] = {"filament_id": fid, **{k: s.get(k) for k in FILAMENT_FIELDS}, "spools": []}
-        groups[fid]["spools"].append({k: s.get(k) for k in SPOOL_FIELDS})
-    for g in groups.values():
-        g["spools"].sort(key=lambda s: s["short_code"] or "")
-    return sorted(groups.values(), key=lambda g: tuple((g[k] or "").lower() for k in FILAMENT_FIELDS[:4]))
+def flatten_spool(s: dict) -> dict:
+    """The fields the page needs; sorting and grouping happen in the browser."""
+    return {
+        **{k: s.get(k) for k in SPOOL_FIELDS},
+        "filament_id": s.get("filament_id"),
+        **{k: s.get(k) for k in FILAMENT_FIELDS},
+        "purchase_date": (s.get("spool_properties") or {}).get("purchase_date"),
+    }
 
 
 @app.get("/api/spools")
@@ -192,7 +189,7 @@ async def get_spools(refresh: bool = False):
     return {
         "fetched_at": cached["fetched_at"],
         "spool_count": len(cached["spools"]),
-        "filaments": build_tree(cached["spools"]),
+        "spools": [flatten_spool(s) for s in cached["spools"]],
     }
 
 
@@ -219,9 +216,20 @@ def validate_label_settings(s: object) -> dict:
     return {k: s[k] for k in DEFAULT_LABEL_SETTINGS}
 
 
+def read_settings_file() -> dict:
+    stored = read_json(DATA_DIR / "settings.json")
+    return stored if isinstance(stored, dict) else {}
+
+
+def update_settings_file(key: str, value) -> None:
+    """Replace one top-level section of settings.json, keeping the others."""
+    stored = read_settings_file()
+    stored[key] = value
+    write_json(DATA_DIR / "settings.json", stored)
+
+
 def load_label_settings() -> dict:
-    stored = read_json(DATA_DIR / "settings.json") or {}
-    merged = {**DEFAULT_LABEL_SETTINGS, **stored.get("label", {})}
+    merged = {**DEFAULT_LABEL_SETTINGS, **(read_settings_file().get("label") or {})}
     try:
         return validate_label_settings(merged)
     except ApiError:
@@ -259,8 +267,69 @@ async def put_settings(request: Request):
     except ValueError:
         raise ApiError(400, "invalid_settings", "Settings must be JSON.")
     label = validate_label_settings(body.get("label") if isinstance(body, dict) else None)
-    write_json(DATA_DIR / "settings.json", {"label": label})
+    update_settings_file("label", label)
     return get_settings()
+
+
+# ── printer settings, one set per printer ─────────────────────────────────────
+
+DEFAULT_PRINTER_SETTINGS = {"density": 3, "direction": "top", "flip": False, "offset_x": 0.0, "offset_y": 0.0}
+PRINTER_NAME_RE = re.compile(r"[A-Za-z0-9 _.:-]{1,64}")
+DOTS_PER_MM = 8
+MAX_OFFSET_MM = 5
+
+
+def validate_printer_settings(s: object) -> dict:
+    def bad(message: str):
+        raise ApiError(400, "invalid_settings", message)
+
+    if not isinstance(s, dict):
+        bad("Printer settings must be a JSON object.")
+    density = s.get("density")
+    if not isinstance(density, int) or isinstance(density, bool) or not 1 <= density <= 5:
+        bad("density must be a whole number from 1 to 5.")
+    if s.get("direction") not in ("top", "left"):
+        bad("direction must be top or left.")
+    if not isinstance(s.get("flip"), bool):
+        bad("flip must be true or false.")
+    clean = {"density": density, "direction": s["direction"], "flip": s["flip"]}
+    for key in ("offset_x", "offset_y"):
+        v = s.get(key)
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or abs(v) > MAX_OFFSET_MM:
+            bad(f"{key} must be a number of mm from -{MAX_OFFSET_MM} to {MAX_OFFSET_MM}.")
+        clean[key] = round(v * DOTS_PER_MM) / DOTS_PER_MM  # whole printer dots
+    return clean
+
+
+def check_printer_name(name: str) -> None:
+    if not PRINTER_NAME_RE.fullmatch(name):
+        raise ApiError(400, "invalid_printer_name", "Printer names are letters, digits, spaces and _ . : - only.")
+
+
+@app.get("/api/printers/{name}")
+def get_printer_settings(name: str):
+    check_printer_name(name)
+    saved = (read_settings_file().get("printers") or {}).get(name)
+    if saved is not None:
+        try:
+            return {"name": name, "saved": True, "settings": validate_printer_settings(saved)}
+        except ApiError:
+            pass
+    return {"name": name, "saved": False, "settings": dict(DEFAULT_PRINTER_SETTINGS)}
+
+
+@app.put("/api/printers/{name}")
+async def put_printer_settings(name: str, request: Request):
+    check_printer_name(name)
+    try:
+        body = await request.json()
+    except ValueError:
+        raise ApiError(400, "invalid_settings", "Settings must be JSON.")
+    clean = validate_printer_settings(body)
+    printers = read_settings_file().get("printers") or {}
+    printers[name] = clean
+    update_settings_file("printers", printers)
+    return {"name": name, "saved": True, "settings": clean}
 
 
 # ── labels ────────────────────────────────────────────────────────────────────
