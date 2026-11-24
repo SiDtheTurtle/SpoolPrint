@@ -1,6 +1,6 @@
 """Backend tests. The 3dfilamentprofiles API is faked, so no quota is used."""
 
-import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
@@ -28,7 +28,7 @@ class FakeApi:
             spool("CCC333", 202, "Jade White"),
             spool("DDD444", 303, "Blue", brand="Anycubic"),
         ]
-        self.calls: list[httpx.Request] = []
+        self.calls: list[httpx2.Request] = []
         self.fail: tuple[int, dict | bytes] | None = None
         self.remaining = 1000
         self.label_svg = SVG
@@ -36,21 +36,21 @@ class FakeApi:
     def paths(self):
         return [r.url.path for r in self.calls]
 
-    def handler(self, request: httpx.Request) -> httpx.Response:
+    def handler(self, request: httpx2.Request) -> httpx2.Response:
         self.calls.append(request)
         self.remaining -= 1
         headers = {"X-RateLimit-Limit": "1500", "X-RateLimit-Remaining": str(self.remaining)}
         if self.fail:
             status, body = self.fail
             if isinstance(body, bytes):
-                return httpx.Response(status, content=body, headers=headers)
-            return httpx.Response(status, json=body, headers=headers)
+                return httpx2.Response(status, content=body, headers=headers)
+            return httpx2.Response(status, json=body, headers=headers)
         path = request.url.path
         if path == "/api/v1/my/spools":
-            return httpx.Response(200, json={"data": self.spools, "as_of": "x"}, headers=headers)
+            return httpx2.Response(200, json={"data": self.spools, "as_of": "x"}, headers=headers)
         if path.startswith("/api/v1/my/spools/") and path.endswith("/label"):
-            return httpx.Response(200, content=self.label_svg, headers={**headers, "Content-Type": "image/svg+xml"})
-        return httpx.Response(404, json={"error": {"code": "not_found", "message": "nope"}}, headers=headers)
+            return httpx2.Response(200, content=self.label_svg, headers={**headers, "Content-Type": "image/svg+xml"})
+        return httpx2.Response(404, json={"error": {"code": "not_found", "message": "nope"}}, headers=headers)
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ def api(tmp_path, monkeypatch):
     fake = FakeApi()
     monkeypatch.setattr(spoolprint, "API_KEY", "3dfp_test")
     monkeypatch.setattr(spoolprint, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(spoolprint, "UPSTREAM_TRANSPORT", httpx.MockTransport(fake.handler))
+    monkeypatch.setattr(spoolprint, "UPSTREAM_TRANSPORT", httpx2.MockTransport(fake.handler))
     return fake
 
 
@@ -155,8 +155,8 @@ def test_upstream_server_error_becomes_502(client, api):
 
 def test_network_failure_becomes_502(client, api, monkeypatch):
     def boom(request):
-        raise httpx.ConnectError("down")
-    monkeypatch.setattr(spoolprint, "UPSTREAM_TRANSPORT", httpx.MockTransport(boom))
+        raise httpx2.ConnectError("down")
+    monkeypatch.setattr(spoolprint, "UPSTREAM_TRANSPORT", httpx2.MockTransport(boom))
     r = client.get("/api/spools")
     assert r.status_code == 502
     assert r.json()["error"]["code"] == "upstream_unreachable"
