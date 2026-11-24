@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
+import httpx2
 import segno
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
@@ -77,8 +77,8 @@ FILAMENT_FIELDS = ("brand", "material", "material_type", "color", "rgb")
 # Served with label SVGs so one opened directly can't run script on our origin.
 LABEL_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"
 
-# Tests swap this for an httpx.MockTransport so they never touch the real API.
-UPSTREAM_TRANSPORT: httpx.AsyncBaseTransport | None = None
+# Tests swap this for an httpx2.MockTransport so they never touch the real API.
+UPSTREAM_TRANSPORT: httpx2.AsyncBaseTransport | None = None
 
 FRIENDLY_ERRORS = {
     "invalid_key": "The API key is missing, wrong or was regenerated. Update FILAMENTPROFILES_API_KEY in .env and restart.",
@@ -139,25 +139,25 @@ def write_json(path: Path, obj: dict) -> None:
 
 # ── upstream API ──────────────────────────────────────────────────────────────
 
-def record_quota(r: httpx.Response) -> None:
+def record_quota(r: httpx2.Response) -> None:
     limit, remaining = r.headers.get("X-RateLimit-Limit"), r.headers.get("X-RateLimit-Remaining")
     if limit is not None and remaining is not None:
         write_json(DATA_DIR / "quota.json", {"limit": int(limit), "remaining": int(remaining), "at": now_iso()})
 
 
-async def upstream_get(path: str, params: dict | None = None) -> httpx.Response:
+async def upstream_get(path: str, params: dict | None = None) -> httpx2.Response:
     if not API_KEY:
         raise ApiError(503, "no_api_key", "FILAMENTPROFILES_API_KEY is not set in .env.")
     async with app.state.upstream_slots:
         try:
-            async with httpx.AsyncClient(
+            async with httpx2.AsyncClient(
                 base_url=API_BASE,
                 transport=UPSTREAM_TRANSPORT,
                 timeout=20,
                 headers={"Authorization": f"Bearer {API_KEY}"},
             ) as client:
                 r = await client.get(path, params=params)
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             detail = f"{e.__class__.__name__}: {e}" if str(e) else e.__class__.__name__
             raise ApiError(502, "upstream_unreachable", f"Could not reach 3dfilamentprofiles.com ({detail}). Try again.")
     record_quota(r)
