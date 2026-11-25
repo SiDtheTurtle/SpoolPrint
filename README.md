@@ -62,8 +62,19 @@ The page is then at `http://<host>:6464`.
 Put SpoolPrint behind a reverse proxy with a certificate (Caddy, Traefik, nginx and so on), or open it on
 the machine it runs on. Over plain `http://` from another machine, you can browse spools but not print.
 
-The page has no login. Keep it on your own network, not on the internet. Your API key stays on the server and
-is never sent to the browser.
+## Access
+
+SpoolPrint has no login. It's for a trusted network only. Put it behind your reverse proxy on your own
+network, and never expose it to the internet.
+
+Anyone who can reach the page can:
+
+- see every spool and filament in the 3D Filament Profiles account,
+- change the label settings and each printer's settings,
+- fetch labels, which uses up the account's monthly API requests,
+- print labels, if their device is within Bluetooth range of the printer.
+
+They can't see the API key. It stays on the server and is never sent to the browser.
 
 ## Use
 
